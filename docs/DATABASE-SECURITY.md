@@ -1574,7 +1574,8 @@ alter default privileges for role postgres in schema public
   revoke usage, select on sequences from anon, authenticated, service_role;
 alter default privileges for role postgres in schema public
   revoke execute on functions from anon, authenticated, service_role;
-alter default privileges for role postgres in schema public
+-- Role-wide, NOT schema-scoped, and that is load-bearing — see the note below.
+alter default privileges for role postgres
   revoke execute on functions from public;
 
 -- 4. Re-grant, narrowly and explicitly. Reads only; every write is an RPC.
@@ -1582,6 +1583,9 @@ grant select on public.events        to authenticated;
 grant select on public.registrations to authenticated;
 grant select on public.admin_users   to authenticated;
 grant select on public.admin_actions to authenticated;
+-- The single table privilege held by service_role: the server-side public event display read
+-- (§ 8.3, § 8.6). Event and configuration copy only — never a participant record.
+grant select on public.events        to service_role;
 -- Per-function grants: see the ACL matrix in § 8.5.
 ```
 
@@ -1596,6 +1600,15 @@ Four things to understand about this block:
   procedures; `ROUTINE` covers functions, aggregates, window functions and procedures alike.
 - **`PUBLIC` is revoked separately from the named roles.** Revoking from `anon` does not remove a
   grant held via `PUBLIC`, and every role is a member of `PUBLIC`.
+- **The `PUBLIC` revoke must be role-wide, not schema-scoped.** Measured on PostgreSQL 17.6 during
+  Phase 2: a *schema-scoped* default-privileges entry is merged on top of the built-in default for
+  the object type, and the built-in default for a function is `EXECUTE` to `PUBLIC`. Written as
+  `… IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`, the entry loses `PUBLIC` but a newly
+  created function still comes out world-executable. The role-wide form is applied authoritatively
+  and does suppress it. Both statements are kept: the schema-scoped one removes the grants Supabase
+  adds for the Data API roles, the role-wide one removes `PUBLIC`. The database test suite proves
+  this by creating a routine with no ACL of its own and asserting that nobody can execute it.
+  (Tables are unaffected either way: their built-in default grants `PUBLIC` nothing.)
 
 **Per-object practice.** PostgreSQL recommends closing the creation window entirely: *"For maximum
 security, issue the `REVOKE` in the same transaction that creates the object; then there is no window
@@ -1639,18 +1652,52 @@ scanning hundreds of rows.
 ### 8.3 Table policy matrix
 
 `anon` has no grants and no policies anywhere — it is omitted from the table below because every cell
-would read "denied".
+would read "denied". `PUBLIC` likewise holds nothing on any application table.
 
 | Table | Role | SELECT | INSERT | UPDATE | DELETE |
 | --- | --- | --- | --- | --- | --- |
 | `events` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
+| `events` | `service_role` | ✅ all rows — no policy, `BYPASSRLS` | ❌ | ❌ | ❌ |
 | `registrations` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
+| `registrations` | `service_role` | ❌ | ❌ | ❌ | ❌ |
 | `admin_users` | `authenticated` | ✅ own row, **or** all rows when `is_active_admin()` | ❌ | ❌ | ❌ |
+| `admin_users` | `service_role` | ❌ | ❌ | ❌ | ❌ |
 | `admin_actions` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
+| `admin_actions` | `service_role` | ❌ | ❌ | ❌ | ❌ |
 
 **`authenticated` holds `SELECT` and nothing else, on every table.** Every write — including a
 simple name correction — happens through a `SECURITY DEFINER` RPC that begins with an
 `is_active_admin()` check.
+
+**`service_role` holds `SELECT` on `events` and nothing else, anywhere.** The public page is
+rendered by our own server and the browser never contacts Supabase (§ 8.6), so the event display
+read has to happen under the secret key — and Supabase/PostgreSQL checks table grants *before* RLS
+and `BYPASSRLS`, so without this grant that read fails with `42501`. The intended final model, in
+full:
+
+| Role | Application access |
+| --- | --- |
+| `PUBLIC` | nothing |
+| `anon` | nothing — no table privilege, no routine, no policy |
+| `authenticated` | `SELECT` on all four tables, scoped by the RLS policies above; `EXECUTE` on the administrative RPCs, each of which re-checks `is_active_admin()` |
+| `service_role` | `SELECT` on `public.events`; `EXECUTE` on `register_for_event`. **No `SELECT` on `registrations`, `admin_users` or `admin_actions`. No write privilege on any table.** |
+
+Three points about the `events` grant specifically:
+
+- **Table-level, not column-level.** `events` carries event and configuration data — title, venue,
+  schedule, capacity, waitlist flag, registration state, counters — and no participant column, so a
+  column-scoped grant would narrow nothing that matters. It would, however, be brittle in a way that
+  fails in production rather than in review: PostgreSQL does not extend a column-scoped grant to a
+  column added later, so `alter table public.events add column …` would silently `42501` the public
+  page while every migration still looked correct. The narrowing that actually shapes the response
+  is the explicit field projection in `lib/data/public.ts`, which returns a hand-written
+  public-event DTO rather than a row.
+- **`SELECT` only.** A write privilege here would place a mutation outside the RPCs and break
+  **I6** and **I9** exactly as it would for an administrator.
+- **The participant tables are the boundary, and it is tested adversarially.** `registrations`,
+  `admin_users` and `admin_actions` remain unreachable with the secret key — including as a
+  PostgREST embedded resource of the event read (`events?select=id,registrations(...)`), which
+  PostgREST resolves as the same role and which therefore returns `42501`.
 
 ```sql
 -- Read policies. There are no write policies, by design.
@@ -1668,10 +1715,17 @@ create policy admin_actions_admin_read on public.admin_actions
   for select to authenticated using (public.is_active_admin());
 
 -- No INSERT / UPDATE / DELETE privilege is granted to any Data API role.
-revoke insert, update, delete on public.events        from anon, authenticated;
-revoke insert, update, delete on public.registrations from anon, authenticated;
-revoke insert, update, delete on public.admin_users   from anon, authenticated;
-revoke insert, update, delete on public.admin_actions from anon, authenticated;
+revoke insert, update, delete, truncate on public.events        from anon, authenticated, service_role;
+revoke insert, update, delete, truncate on public.registrations from anon, authenticated, service_role;
+revoke insert, update, delete, truncate on public.admin_users   from anon, authenticated, service_role;
+revoke insert, update, delete, truncate on public.admin_actions from anon, authenticated, service_role;
+
+-- And no SELECT beyond the matrix above: participant and administrator data are unreachable with
+-- the secret key.
+revoke select on public.events        from anon;
+revoke select on public.registrations from anon, service_role;
+revoke select on public.admin_users   from anon, service_role;
+revoke select on public.admin_actions from anon, service_role;
 ```
 
 This replaces the earlier design, which granted column-scoped
@@ -1750,8 +1804,9 @@ Reading the matrix:
 - **`authenticated` may execute only the admin operations**, and every one of those re-checks
   `is_active_admin()` internally. A signed-in non-administrator gets `not_authorized` from all of
   them.
-- **`service_role` may execute exactly one routine: `register_for_event`.** That is the entire
-  secret-key surface on the database.
+- **`service_role` may execute exactly one routine: `register_for_event`.** Together with `SELECT`
+  on `public.events` (§ 8.3), that is the entire secret-key surface on the database: one read, one
+  write, both on the public path.
 
   This is a correctness requirement, not merely least privilege. Every other routine authorizes with
   `is_active_admin()`, which resolves `auth.uid()` from the request's JWT claims. **Under
@@ -1786,7 +1841,7 @@ is present in the public bundle, and there is no query for anyone to tamper with
 
 | Path | Identity | RLS |
 | --- | --- | --- |
-| Public event display read | secret key, inside `lib/data/public.ts` | bypassed — returns a hand-written display DTO |
+| Public event display read | secret key, inside `lib/data/public.ts` — `SELECT` on `public.events` only (§ 8.3) | bypassed — the DAL projects explicit fields and returns a hand-written display DTO |
 | Public registration write | secret key → `register_for_event` | bypassed — invariants enforced by the function and its constraints |
 | **Admin reads of participant data** | **the administrator's own JWT** | **enforced** |
 | **Admin writes** | **the administrator's own JWT** → an RPC that checks `is_active_admin()`. There are no direct writes. | **bypassed inside the RPC, but the RPC re-checks authorization and is granted only to `authenticated`** |
@@ -1808,6 +1863,9 @@ backend-for-frontend posture and is mitigated in depth:
   functions;
 - the DAL returns DTOs, never rows;
 - a CI step greps the client bundle for `sb_secret_`;
+- the key's own database privileges are minimal in their own right: `SELECT` on `public.events`,
+  `EXECUTE` on `register_for_event`, and nothing else — so even a leaked secret key reads no
+  participant record, no administrator record and no audit row;
 - and the sensitive surface — **all** admin access to participant data — does not use it at all, so
   RLS is the genuine enforcement layer exactly where the data is.
 

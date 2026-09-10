@@ -1,0 +1,15 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "plugins": []
+  },
+  "include": [
+    "**/*.mts"
+  ],
+  "exclude": []
+}

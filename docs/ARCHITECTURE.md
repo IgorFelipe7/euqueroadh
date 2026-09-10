@@ -108,6 +108,7 @@ graph TD
     SA --> DAL
     RH --> DAL
     DAL -->|"secret key — public path only"| RPC
+    DAL -->|"secret key — event display read<br/>SELECT on events only"| DB
     DAL -->|"admin JWT — every admin write"| RPC
     DAL -->|"admin JWT — reads, RLS enforced"| DB
     DAL --> AUTH
@@ -120,6 +121,13 @@ graph TD
 > Supabase caller, and it uses exactly two identities: the **secret key**, confined to the public
 > read/write path in `lib/data/public.ts`; and the **signed-in administrator's own JWT** for every
 > operation that touches participant data, so RLS is the real authorization boundary there.
+
+The secret key's database privileges are sized to exactly that public path and no wider:
+`SELECT` on `public.events` — event and configuration copy, from which the DAL projects an explicit
+public-event DTO — plus `EXECUTE` on `register_for_event`. It holds **no** `SELECT` on
+`registrations`, `admin_users` or `admin_actions`, and no write privilege on any table, so
+participant data is unreachable with it even if it leaked. The full matrix is
+[DATABASE-SECURITY.md § 8.3](./DATABASE-SECURITY.md).
 
 The one exception is the admin **sign-in page**, which uses a browser client with the *publishable*
 key to perform the OTP exchange. It never reads application tables.

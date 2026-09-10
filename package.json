@@ -11,9 +11,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p supabase/tests/node --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test:sql": "supabase test db",
+    "db:test:node": "node --test supabase/tests/node/concurrency.test.mts supabase/tests/node/authorization.test.mts",
+    "db:test": "npm run db:test:sql && npm run db:test:node",
     "validate": "npm run lint && npm run typecheck && npm run test"
   },
   "dependencies": {
@@ -26,10 +32,13 @@
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
+    "pg": "^8.23.0",
+    "supabase": "^2.117.0",
     "tailwindcss": "4.3.3",
     "typescript": "^5.9",
     "vitest": "4.1.11"
