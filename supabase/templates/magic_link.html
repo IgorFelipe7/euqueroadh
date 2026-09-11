@@ -1,0 +1,29 @@
+<!--
+  LOCAL DEVELOPMENT TEMPLATE — supabase/config.toml [auth.email.template.magic_link].
+
+  Supabase sends this template for both magic links and email OTP; including `{{ .Token }}` is what
+  turns it into the six-digit code sign-in the product specifies (ADMIN-SPEC.md section 2,
+  DATABASE-SECURITY.md section 7.1). The numeric code is the primary path — the link below is a
+  convenience that lands on /auth/confirmar, which verifies the token hash server-side.
+
+  The production project is configured in the Supabase dashboard (Authentication -> Templates) as
+  part of the launch checklist, together with custom SMTP (DECISIONS.md Q5). Keep the two in sync:
+  a production template without `{{ .Token }}` would silently break the sign-in screen.
+-->
+<!doctype html>
+<html lang="pt-BR">
+  <body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #16181f">
+    <h2 style="margin: 0 0 12px">Seu código de acesso</h2>
+    <p style="margin: 0 0 16px">Use este código para entrar na área de organizadores:</p>
+    <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px; margin: 0 0 16px">
+      {{ .Token }}
+    </p>
+    <p style="margin: 0 0 16px">
+      O código expira em 1 hora e só pode ser usado uma vez. Se você não pediu este código, ignore
+      este e-mail.
+    </p>
+    <p style="margin: 0">
+      Se preferir, <a href="{{ .SiteURL }}/auth/confirmar?token_hash={{ .TokenHash }}&type=email">entre por este link</a>.
+    </p>
+  </body>
+</html>

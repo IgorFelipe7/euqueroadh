@@ -121,6 +121,11 @@ export function phone(n: number): string {
  * Removes everything these suites create.  The pgTAP suites assert on global counts (one seeded
  * event, no registrations, no audit rows), so leftovers here would break them.  Audit rows go
  * first: admin_actions.event_id is ON DELETE SET NULL, so deleting events would orphan them.
+ *
+ * THE SUITE FILES MUST NOT RUN IN PARALLEL.  Every file shares this one namespace, so one file's
+ * cleanup deletes another file's fixtures mid-scenario — which surfaces as `event_not_found` and
+ * `not_authorized` in whichever test happened to be running.  `npm run db:test:node` passes
+ * `--test-concurrency=1` for that reason; Node's default runs the files concurrently.
  */
 export async function cleanup(db: Db): Promise<void> {
   await db.query(
