@@ -103,6 +103,30 @@ export const registrationInputSchema = z.object({
   phone: phoneSchema,
 });
 
+const REGISTRATION_FIELD_SCHEMAS = {
+  name: nameSchema,
+  age: ageSchema,
+  phone: phoneSchema,
+} as const;
+
+export type RegistrationFieldName = keyof typeof REGISTRATION_FIELD_SCHEMAS;
+
+/**
+ * One field, validated on its own, for the browser's blur-and-correct feedback
+ * (PRODUCT-SPEC.md section 4.3).
+ *
+ * The same schema as the submit path, applied to one key — not a parallel set of rules. Whatever
+ * this returns is a hint: the Server Action parses the whole object again and that parse is the
+ * authoritative one.
+ */
+export function validateRegistrationField(
+  field: RegistrationFieldName,
+  value: string,
+): string | null {
+  const result = REGISTRATION_FIELD_SCHEMAS[field].safeParse(value);
+  return result.success ? null : (result.error.issues[0]?.message ?? null);
+}
+
 export type RegistrationInput = z.input<typeof registrationInputSchema>;
 export type RegistrationValues = z.output<typeof registrationInputSchema>;
 

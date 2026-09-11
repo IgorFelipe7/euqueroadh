@@ -5,7 +5,8 @@
  * database; if either is missing, the resulting failures would look like application bugs. Better a
  * single explicit message naming the command that fixes it.
  */
-import { LOCAL, deleteTestIdentities, purgeMail, withDb } from './local';
+import { withDb } from './database';
+import { LOCAL, deleteTestIdentities, purgeMail } from './local';
 
 export default async function globalSetup(): Promise<void> {
   try {

@@ -24,14 +24,12 @@ import { resolve } from 'node:path';
 
 import { expect, type Page } from '@playwright/test';
 import { createClient } from '@supabase/supabase-js';
-import pg from 'pg';
 
-const { Client } = pg;
+import { DB_URL, assertLocal, withDb } from './database';
 
 /** Every synthetic identity uses this domain, and cleanup keys off it. */
 export const TEST_EMAIL_DOMAIN = 'teste.local';
 
-const DEFAULT_DB_URL = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const DEFAULT_MAIL_URL = 'http://127.0.0.1:54324';
 
 function readEnvFile(): Record<string, string> {
@@ -54,20 +52,20 @@ function required(name: string): string {
   return value;
 }
 
-function assertLocal(label: string, url: string): string {
-  if (!/^(postgresql|https?):\/\/(?:[^@/]*@)?(127\.0\.0\.1|localhost)(:|\/|$)/.test(url)) {
-    throw new Error(`Refusing to run: ${label} (${url}) is not a local address.`);
-  }
-  return url;
-}
-
 export const LOCAL = {
   /** The application under test. Matches `NEXT_PUBLIC_SITE_URL` and Supabase's `site_url`. */
   siteUrl: assertLocal('NEXT_PUBLIC_SITE_URL', required('NEXT_PUBLIC_SITE_URL')),
   supabaseUrl: assertLocal('NEXT_PUBLIC_SUPABASE_URL', required('NEXT_PUBLIC_SUPABASE_URL')),
   /** Used ONLY by the harness, to act as the Auth Admin API. Never asserted against a bundle. */
   secretKey: required('SUPABASE_SECRET_KEY'),
-  dbUrl: assertLocal('SUPABASE_DB_URL', process.env.SUPABASE_DB_URL ?? DEFAULT_DB_URL),
+  /**
+   * Read ONLY so the suite can prove this value reaches no browser asset. It is Cloudflare's
+   * published test secret locally, and the assertion is the same either way.
+   */
+  turnstileSecret: required('TURNSTILE_SECRET_KEY'),
+  /** Public by design — the widget needs it in the page. Asserted to be present, never absent. */
+  turnstileSiteKey: required('NEXT_PUBLIC_TURNSTILE_SITE_KEY'),
+  dbUrl: DB_URL,
   mailUrl: assertLocal('SUPABASE_MAIL_URL', process.env.SUPABASE_MAIL_URL ?? DEFAULT_MAIL_URL),
 } as const;
 
@@ -75,15 +73,10 @@ export const LOCAL = {
  * PostgreSQL
  * ---------------------------------------------------------------------------------------------- */
 
-export async function withDb<T>(fn: (db: pg.Client) => Promise<T>): Promise<T> {
-  const db = new Client({ connectionString: LOCAL.dbUrl });
-  await db.connect();
-  try {
-    return await fn(db);
-  } finally {
-    await db.end();
-  }
-}
+// The connection, the local-address guard and the event fixtures live in `./database`, which
+// imports no Playwright API so that `prepare-event.mts` can use the same code from a plain Node
+// process before the application is built. Re-exported here so existing specs import one module.
+export { withDb };
 
 /* ------------------------------------------------------------------------------------------------
  * Identities

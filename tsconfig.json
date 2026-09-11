@@ -10,6 +10,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    // `e2e/support/prepare-event.mts` is executed by Node directly, before the application is
+    // built, so it must import its dependency by the exact on-disk specifier Node resolves.
+    // Safe with `noEmit`: nothing here is compiled to JavaScript that could keep the extension.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,

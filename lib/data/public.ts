@@ -14,22 +14,16 @@
  *     `settings_version`; the page must not learn them. D19 is explicit that the public page shows
  *     *state*, never numbers — a live count leaks the organization's turnout to anyone with the URL.
  *
- * The registration write (`register_for_event`) is Phase 4 and lands in this file too.
+ * The registration write lives here too, and the same two rules apply to it: a narrow command in,
+ * a narrow outcome out, and no PostgREST or SQL detail in between.
  */
 import 'server-only';
 
 import { cache } from 'react';
 
-import { secretClient } from './supabase/secret';
+import type { PublicEventState, RegistrationStatus } from '@/lib/domain/outcomes';
 
-/**
- * The advisory state the page renders (PRODUCT-SPEC.md section 4.4).
- *
- * Advisory is not a hedge: a visitor can arrive from a cached page and still be waitlisted. The
- * authority is `register_for_event()`, which decides inside a row lock at submit time. Deriving the
- * banner here is presentation, not allocation — no capacity rule is reimplemented in TypeScript.
- */
-export type PublicAvailability = 'open' | 'waitlist' | 'full' | 'closed';
+import { secretClient } from './supabase/secret';
 
 /** Exactly what the public page renders. Nothing operational, nothing numeric. */
 export interface PublicEvent {
@@ -48,7 +42,14 @@ export interface PublicEvent {
   readonly priceLabel: string | null;
   readonly isFree: boolean;
   readonly includesLabel: string | null;
-  readonly availability: PublicAvailability;
+  /**
+   * The advisory state the page renders (PRODUCT-SPEC.md section 4.4).
+   *
+   * Advisory is not a hedge: a visitor can arrive from a cached page and still be waitlisted. The
+   * authority is `register_for_event()`, which decides inside a row lock at submit time. Deriving
+   * this here is presentation, not allocation — no capacity rule is reimplemented in TypeScript.
+   */
+  readonly state: PublicEventState;
 }
 
 /** The row shape this module reads. Private: it carries operational columns the UI may not see. */
@@ -105,7 +106,7 @@ const ACTIVE_EVENT_COLUMNS = [
  * than optimistic. Deduplicated per request; the ISR window, not this cache, is what bounds
  * staleness on the public page.
  */
-const loadActiveEvent = cache(async (): Promise<ActiveEventRow | null> => {
+async function fetchActiveEvent(): Promise<ActiveEventRow | null> {
   const { data, error } = await secretClient()
     .from('events')
     .select(ACTIVE_EVENT_COLUMNS)
@@ -120,14 +121,40 @@ const loadActiveEvent = cache(async (): Promise<ActiveEventRow | null> => {
   }
 
   return data;
-});
+}
+
+const loadActiveEvent = cache(fetchActiveEvent);
 
 /**
- * The active event's id, for the DAL's own use — the registration RPC needs it. Deliberately not
- * the row: nothing outside this module gets to hold operational columns.
+ * What the Server Action needs before it can register anyone: which event, and what the page it was
+ * submitted from was most likely showing.
+ *
+ * Deduplicated per request, so resolving the event costs the same one query whether the page renders
+ * it or the action resolves it. Never the row — nothing outside this module holds operational
+ * columns.
  */
-export async function getActiveEventId(): Promise<string | null> {
-  return (await loadActiveEvent())?.id ?? null;
+export interface ActiveEventContext {
+  readonly id: string;
+  readonly state: PublicEventState;
+}
+
+export async function getActiveEventContext(): Promise<ActiveEventContext | null> {
+  const row = await loadActiveEvent();
+  if (!row) return null;
+
+  return { id: row.id, state: stateOf(row) };
+}
+
+/**
+ * The advisory state as it is **right now**, deliberately bypassing the per-request cache.
+ *
+ * Called after an allocation to answer one question: did this registration change what the page
+ * should say? `getActiveEventContext()` cannot answer it, because within this request it still
+ * holds the value read before the write.
+ */
+export async function readCurrentEventState(): Promise<PublicEventState | null> {
+  const row = await fetchActiveEvent();
+  return row ? stateOf(row) : null;
 }
 
 /** The public event, mapped into the DTO the page renders. */
@@ -151,12 +178,126 @@ export async function getActiveEventForDisplay(): Promise<PublicEvent | null> {
     priceLabel: row.price_label,
     isFree: row.is_free,
     includesLabel: row.includes_label,
-    availability: availabilityOf(row),
+    state: stateOf(row),
   };
 }
 
-function availabilityOf(row: ActiveEventRow): PublicAvailability {
+function stateOf(row: ActiveEventRow): PublicEventState {
   if (row.registration_state !== 'open') return 'closed';
-  if (row.confirmed_count >= row.capacity) return row.waitlist_enabled ? 'waitlist' : 'full';
+  if (row.confirmed_count >= row.capacity) {
+    return row.waitlist_enabled ? 'full_waitlist' : 'full_closed';
+  }
   return 'open';
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * The registration write
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * What the RPC is given. Already validated, already normalized: `fullName` has been trimmed and its
+ * internal whitespace collapsed, `age` is an integer inside the plausibility bounds, and
+ * `phoneE164` is canonical. Raw user input never reaches this type
+ * (PRODUCT-SPEC.md sections 4.3 and 5.2).
+ */
+export interface RegistrationCommand {
+  readonly eventId: string;
+  readonly fullName: string;
+  readonly age: number;
+  readonly phoneE164: string;
+}
+
+/**
+ * What the database decided, translated once, here.
+ *
+ * `unavailable` is this layer's own word for "the database did not answer in a way I recognise". It
+ * exists so that a SQLSTATE, a PostgREST envelope or an unexpected `outcome` string can never leave
+ * the DAL — the Server Action maps it to the generic retry message and a correlation code.
+ */
+export type RegistrationAllocation =
+  | { readonly outcome: 'confirmed'; readonly registrationId: string }
+  | { readonly outcome: 'waitlisted'; readonly registrationId: string }
+  | { readonly outcome: 'already_registered'; readonly status: RegistrationStatus }
+  | { readonly outcome: 'full' }
+  | { readonly outcome: 'closed' }
+  | { readonly outcome: 'unavailable' };
+
+/** The one row shape `register_for_event` returns. Private: it never leaves this module. */
+interface AllocationRow {
+  outcome: string | null;
+  status: string | null;
+  registration_id: string | null;
+}
+
+/**
+ * The **only** allocation path in the application (DATABASE-SECURITY.md sections 5 and 8.6).
+ *
+ * There is no capacity arithmetic here and there never will be: the function locks the event row,
+ * checks for a duplicate, decides, inserts and lets the trigger move the counters, all inside one
+ * transaction. Reimplementing any part of that in TypeScript would reintroduce exactly the
+ * count-then-insert race the database was shaped to eliminate.
+ *
+ * Turnstile has already been verified by the time this is called — never from inside the locked
+ * transaction, and never after it.
+ */
+export async function registerParticipant(
+  command: RegistrationCommand,
+): Promise<RegistrationAllocation> {
+  const { data, error } = await secretClient().rpc('register_for_event', {
+    p_event_id: command.eventId,
+    p_full_name: command.fullName,
+    p_age: command.age,
+    p_phone_e164: command.phoneE164,
+  });
+
+  if (error) {
+    // `code` is a SQLSTATE or a PostgREST code — a machine token, not a sentence, and not personal.
+    // The message, the hint and the details are deliberately dropped: they can quote the statement,
+    // and the statement quotes the participant.
+    console.error(
+      JSON.stringify({ event: 'public.register_rpc_failed', code: error.code ?? 'unknown' }),
+    );
+    return { outcome: 'unavailable' };
+  }
+
+  // A `RETURNS TABLE` function arrives as an array of rows; this one always returns exactly one.
+  const row = (Array.isArray(data) ? (data[0] as AllocationRow | undefined) : undefined) ?? null;
+
+  if (!row) {
+    console.error(JSON.stringify({ event: 'public.register_rpc_empty' }));
+    return { outcome: 'unavailable' };
+  }
+
+  switch (row.outcome) {
+    case 'confirmed':
+    case 'waitlisted':
+      return row.registration_id
+        ? { outcome: row.outcome, registrationId: row.registration_id }
+        : unexpected(row.outcome);
+
+    case 'already_registered':
+      return row.status === 'confirmed' || row.status === 'waitlisted'
+        ? { outcome: 'already_registered', status: row.status }
+        : unexpected(row.outcome);
+
+    case 'full':
+      return { outcome: 'full' };
+
+    case 'closed':
+      return { outcome: 'closed' };
+
+    default:
+      return unexpected(row.outcome);
+  }
+}
+
+/**
+ * The database answered with something this application does not model. That is a defect, not a
+ * participant's problem: it is loud in the log and generic on screen.
+ */
+function unexpected(outcome: string | null): RegistrationAllocation {
+  console.error(
+    JSON.stringify({ event: 'public.register_rpc_unexpected_outcome', outcome: outcome ?? null }),
+  );
+  return { outcome: 'unavailable' };
 }

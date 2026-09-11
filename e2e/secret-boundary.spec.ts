@@ -53,6 +53,7 @@ test('the secret key is absent from every client asset the build emitted', async
     const source = readFileSync(path, 'utf8');
     return (
       source.includes(LOCAL.secretKey) ||
+      source.includes(LOCAL.turnstileSecret) ||
       source.includes('SUPABASE_SECRET_KEY') ||
       source.includes('TURNSTILE_SECRET_KEY')
     );
@@ -108,9 +109,23 @@ test('an administrator session never serialises the key or its tokens into the p
   for (const cookie of cookies) expect(visibleCookies).not.toContain(cookie.name);
 });
 
-test('every Data Access Layer module is marked server-only', async () => {
-  const dal = resolve(process.cwd(), 'lib/data');
-  const modules = filesUnder(dal, /\.ts$/);
+/**
+ * Every module that can reach a secret opens with the marker — the Data Access Layer, the Turnstile
+ * verifier, and the registration pipeline that wires them together. Phase 4 added the second and
+ * third, and each is one careless import away from a Client Component.
+ *
+ * `lib/registration/state.ts` is deliberately excluded and must stay excluded: it holds the form
+ * state and the pt-BR copy that the Client Component imports by design, and it touches nothing
+ * privileged. Marking it would break the form; anything else in these directories that needs no
+ * marker is a module that has been put in the wrong place.
+ */
+const SERVER_ONLY_DIRECTORIES = ['lib/data', 'lib/turnstile', 'lib/registration'];
+const CLIENT_SAFE = new Set([resolve(process.cwd(), 'lib/registration/state.ts')]);
+
+test('every module that can reach a secret is marked server-only', async () => {
+  const modules = SERVER_ONLY_DIRECTORIES.flatMap((directory) =>
+    filesUnder(resolve(process.cwd(), directory), /\.ts$/),
+  ).filter((path) => !CLIENT_SAFE.has(path) && !path.endsWith('.test.ts'));
 
   expect(modules.length).toBeGreaterThan(0);
 
@@ -119,6 +134,13 @@ test('every Data Access Layer module is marked server-only', async () => {
     const firstImport = /^\s*import .*$/m.exec(source)?.[0] ?? '';
     expect(firstImport.trim(), `${path} must open with the server-only marker`).toBe(
       "import 'server-only';",
+    );
+  }
+
+  // The excluded module is excluded because it is client-safe, not because it was forgotten.
+  for (const path of CLIENT_SAFE) {
+    expect(readFileSync(path, 'utf8'), `${path} is imported by a Client Component`).not.toContain(
+      "import 'server-only'",
     );
   }
 });

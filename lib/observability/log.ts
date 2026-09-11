@@ -1,15 +1,19 @@
 /**
- * The only sanctioned way to write an authentication line to the log.
+ * The only sanctioned way to write an authentication or registration line to the log.
  *
  * ARCHITECTURE.md section 11: observability that collects personal data is a liability, not an
  * asset. This module exists so that "what may be logged" is a decision made once, in one file, and
  * enforced by the shape of the function rather than by everyone remembering.
  *
  * NEVER passed to it, and therefore never logged: the one-time code, a token hash, an access or
- * refresh token, an Authorization header, a cookie value, the secret key, or a participant's name,
- * age or phone number. An administrator's address is reduced to its domain — enough to diagnose
- * "the whole ministry's mail server is bouncing", useless for building a list of who is an
- * administrator.
+ * refresh token, an Authorization header, a cookie value, the secret key, a Turnstile token, or a
+ * participant's name, age or phone number. An administrator's address is reduced to its domain —
+ * enough to diagnose "the whole ministry's mail server is bouncing", useless for building a list of
+ * who is an administrator.
+ *
+ * The enforcement is structural: each log function accepts one closed `interface`, and none of
+ * those interfaces has a field a personal value could be assigned to. Adding one is the review
+ * failure, not passing one.
  */
 import 'server-only';
 
@@ -81,6 +85,56 @@ export function newCorrelationId(length = 6): string {
 export function logAuthEvent(fields: AuthLogFields): void {
   const line = JSON.stringify({ ...fields, at: new Date().toISOString() });
   if (fields.outcome === 'provider_unavailable' || fields.outcome === 'lookup_failed') {
+    console.error(line);
+  } else {
+    console.info(line);
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Registration — the public write path
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * The closed set of public-registration events. Operational categories only: one line per
+ * submission says what the system decided, never who it decided it about.
+ */
+export type RegistrationEvent =
+  | 'registration.validation_failed'
+  | 'registration.turnstile_failed'
+  | 'registration.confirmed'
+  | 'registration.waitlisted'
+  | 'registration.duplicate'
+  | 'registration.full'
+  | 'registration.closed'
+  | 'registration.infrastructure_error';
+
+/**
+ * Every field here is an identifier, a machine code or a measurement.
+ *
+ * There is deliberately **no** field for a name, an age or a phone number, and `fields` carries
+ * field *names* (`['phone']`), never their values — the same rule `admin_actions.metadata` lives by
+ * (DATABASE-SECURITY.md section 6.3). `registrationId` and `eventId` are opaque database keys: they
+ * are what lets an organizer's "erro ABC123" be found, and they identify a row rather than a person.
+ */
+export interface RegistrationLogFields {
+  readonly event: RegistrationEvent;
+  readonly eventId?: string;
+  readonly registrationId?: string;
+  readonly durationMs?: number;
+  /** Present only when the visitor is shown a correlation code. */
+  readonly correlationId?: string;
+  /** Which fields failed validation — names only. */
+  readonly fields?: readonly string[];
+  /** Cloudflare's own machine codes, such as `timeout-or-duplicate`. Never the token. */
+  readonly turnstileCodes?: readonly string[];
+}
+
+/** One structured line per submission. `console` is the transport; Vercel's runtime log is the sink. */
+export function logRegistrationEvent(fields: RegistrationLogFields): void {
+  const line = JSON.stringify({ ...fields, at: new Date().toISOString() });
+
+  if (fields.event === 'registration.infrastructure_error') {
     console.error(line);
   } else {
     console.info(line);
