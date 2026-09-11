@@ -128,13 +128,19 @@ export function TurnstileWidget({
   }, [challengeNonce]);
 
   return (
-    // Reserved height from first paint (VISUAL-DIRECTION.md section 9.6): a widget that appears
-    // after hydration and pushes the submit button down is a layout shift on the most important
-    // element of the page.
+    /*
+      Reserved height from first paint (VISUAL-DIRECTION.md section 9.6): a widget that appears
+      after hydration and pushes the submit button down is a layout shift on the most important
+      element of the page.
+
+      The sizing lives in `.u-challenge` (globals.css) because Cloudflare's flexible widget has a
+      hard 300px minimum width, which is wider than the inside of the form panel on a small phone.
+      That is a layout problem with one correct answer and it belongs in one place.
+    */
     <div
       ref={container}
       aria-describedby={describedBy}
-      className="min-h-[70px] w-full max-w-[300px]"
+      className="u-challenge"
       data-testid="turnstile"
     />
   );

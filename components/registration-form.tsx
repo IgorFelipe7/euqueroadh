@@ -1,21 +1,26 @@
 'use client';
 
 /**
- * The registration form — PRODUCT-SPEC.md sections 4.2, 4.3, 6 and 7.
+ * The registration form — PRODUCT-SPEC.md sections 4.2, 4.3, 6 and 7;
+ * VISUAL-DIRECTION.md section 9.
  *
  * The smallest client island the flow can be built from. It owns four things the browser has to do
  * and the server cannot: the phone mask, blur-and-correct validation, the pending state, and moving
  * focus to whatever just appeared. Everything it decides is a courtesy — the Server Action re-parses
  * every value from scratch and ignores anything computed here.
  *
- * **Phase 4 is structure, not art direction.** The markup and the semantics are final; the visual
- * treatment in VISUAL-DIRECTION.md section 9 arrives in Phase 5 and must be able to land without
- * touching a line of the logic below.
+ * **Phase 5 changed the presentation and nothing else.** The state machine, the validation timing,
+ * the focus choreography, the Turnstile lifetime and the shape of what crosses to the server are
+ * exactly as Phase 4 proved them. The visual work is the panel, the field anatomy, the states and
+ * the outcome treatments; the only additions to behaviour are the three secondary actions the
+ * confirmation panel offers (section 6.1), which touch no part of the submission path.
  */
 
+import Link from 'next/link';
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 
 import { registerAction } from '@/app/actions/register';
+import type { EventLinks } from '@/lib/domain/event-presentation';
 import { outcomeCopy, type RegistrationOutcome } from '@/lib/domain/outcomes';
 import { applyPhoneMask } from '@/lib/domain/phone';
 import { validateRegistrationField } from '@/lib/domain/schemas';
@@ -29,6 +34,8 @@ import {
   type RegistrationFormState,
 } from '@/lib/registration/state';
 
+import { CTA_PRIMARY, CTA_SECONDARY, CTA_TERTIARY } from './site/cta';
+import { AlertIcon, CalendarIcon, MapPinIcon, ShareIcon, SpinnerIcon } from './site/icons';
 import { TurnstileWidget } from './turnstile-widget';
 
 type FieldErrors = Partial<Record<RegistrationField, string>>;
@@ -76,6 +83,24 @@ const FIELD_ATTRIBUTES: Readonly<
   },
 };
 
+/**
+ * The field's visual anatomy — section 9.2 and 9.3.
+ *
+ * The border is the control's boundary, not the fill: `border-strong` is 3.41:1 against the
+ * `ink-700` surface and meets SC 1.4.11, while the surface itself is deliberately only 1.17:1
+ * against the page. Lightening the fill to "fix" that would be the wrong repair (section 3.6).
+ *
+ * `:autofill` is overridden explicitly, because a browser otherwise forces a pale fill that would
+ * put near-black text on this panel and silently break contrast.
+ */
+const FIELD_CLASS = [
+  'text-input u-settle min-h-13 w-full rounded-field border bg-ink-700 px-4 text-text-primary',
+  'hover:border-border-hover',
+  'focus-visible:border-sky-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300',
+  'autofill:[-webkit-text-fill-color:var(--color-text-primary)]',
+  'autofill:[box-shadow:inset_0_0_0_1000px_var(--color-ink-700)]',
+].join(' ');
+
 const DIGITS_ONLY = /\D/g;
 
 /** The mask is a typing aid; `(00) 00000-0000` satisfies it and is rejected by the schema. */
@@ -100,10 +125,13 @@ export function RegistrationForm({
   siteKey,
   accepting,
   unavailableMessage,
+  links,
 }: {
   siteKey: string;
   accepting: boolean;
   unavailableMessage: string | null;
+  /** Four public strings for the outcome panel's secondary actions. No part of the event row. */
+  links: EventLinks;
 }) {
   const [state, formAction, isPending] = useActionState<RegistrationFormState, FormData>(
     registerAction,
@@ -129,6 +157,26 @@ export function RegistrationForm({
   const fieldsetId = useId();
   const alertRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * True between pressing the submit control and that press resolving.
+   *
+   * It exists because of a defect found by measuring the page rather than by reading it: pressing
+   * the button blurs the field above it, blur validation inserts that field's error message, and
+   * the button moves down by about 50px **between `pointerdown` and `pointerup`** — so the pointer
+   * comes up somewhere else, no `click` is generated, and the form is never submitted. The person
+   * taps "Confirmar inscrição", the button appears to do nothing, and no summary is announced.
+   *
+   * The fix is to let the submit path own that validation: while a press is in flight, blur does
+   * not validate, and `handleSubmit` then reports every field at once with the focused error
+   * summary — which is exactly what PRODUCT-SPEC.md section 4.3 specifies for submit. Nothing is
+   * validated less; it is validated in one place instead of two, and the layout stops moving under
+   * the pointer.
+   *
+   * `pointerdown` rather than `relatedTarget`, because iOS Safari does not focus a button on tap
+   * and would leave `relatedTarget` null exactly where this matters most.
+   */
+  const pressingSubmit = useRef(false);
 
   const fieldId = (field: RegistrationField) => `${fieldsetId}-${field}`;
   const hintId = (field: RegistrationField) => `${fieldsetId}-${field}-hint`;
@@ -191,6 +239,24 @@ export function RegistrationForm({
     return () => clearTimeout(timer);
   }, [isPending]);
 
+  /*
+   * Releasing the pointer ends the press, wherever it is released — a press that began on the
+   * button and ended somewhere else must not leave blur validation switched off.
+   */
+  useEffect(() => {
+    const release = () => {
+      pressingSubmit.current = false;
+    };
+
+    document.addEventListener('pointerup', release);
+    document.addEventListener('pointercancel', release);
+
+    return () => {
+      document.removeEventListener('pointerup', release);
+      document.removeEventListener('pointercancel', release);
+    };
+  }, []);
+
   /* Editing. ----------------------------------------------------------------------------------- */
 
   function handleChange(field: RegistrationField, raw: string) {
@@ -206,6 +272,10 @@ export function RegistrationForm({
   }
 
   function handleBlur(field: RegistrationField) {
+    // A submission is being pressed: `handleSubmit` validates every field in a moment and reports
+    // them together. Inserting one message here would move the button out from under the pointer.
+    if (pressingSubmit.current) return;
+
     // An untouched empty field is not an error yet — the person may simply not have reached it.
     if (values[field].length === 0 && !errors[field]) return;
 
@@ -214,6 +284,8 @@ export function RegistrationForm({
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    pressingSubmit.current = false;
+
     const found: FieldErrors = {};
 
     for (const field of REGISTRATION_FIELDS) {
@@ -241,181 +313,358 @@ export function RegistrationForm({
   // An outcome always wins. Once someone has an answer, nothing the event does afterwards may take
   // it off their screen.
   if (state.outcome) {
-    return <OutcomePanel ref={panelRef} outcome={state.outcome} />;
+    return <OutcomePanel ref={panelRef} outcome={state.outcome} links={links} />;
   }
 
   if (!accepting) {
     // Full with no waiting list, or closed. The form is replaced by the reason rather than left in
     // place to accept a submission that cannot succeed.
     return (
-      <p role="status" className="text-body rounded-xl border border-border-strong px-5 py-6">
-        {unavailableMessage}
-      </p>
+      // The same accent the hero's state banner wears, so the two sentences read as one state
+      // rather than as two unrelated notices.
+      <Panel accent="border-sky-300/40">
+        <p role="status" className="text-body text-text-primary">
+          {unavailableMessage}
+        </p>
+      </Panel>
     );
   }
 
   return (
-    <form action={formAction} onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
-      {/*
-        `tabindex=-1` plus focus, so the person is put where the problem is described rather than
-        left to discover it. Rendered as an empty, unfocusable region when there is nothing to say.
-      */}
-      <div
-        ref={alertRef}
-        tabIndex={-1}
-        role="alert"
-        data-testid="registration-alert"
-        className="empty:hidden focus-visible:outline-2 focus-visible:outline-sky-300"
-      >
-        {listedErrors.length > 0 ? (
-          <div className="rounded-lg border border-danger-300 px-4 py-3">
-            <h3 className="text-h3 text-text-primary">{FORM_COPY.errorSummaryHeading}</h3>
-            <ul className="mt-2 flex flex-col gap-1">
-              {listedErrors.map((field) => (
-                <li key={field}>
-                  <a
-                    href={`#${fieldId(field)}`}
-                    className="text-hint text-danger-300 underline"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      document.getElementById(fieldId(field))?.focus();
-                    }}
-                  >
-                    {FIELD_COPY[field].label}: {errors[field]}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {formError ? (
-          <div className="rounded-lg border border-danger-300 px-4 py-3">
-            <p className="text-body text-text-primary">{formError.message}</p>
-            {formError.correlationId ? (
-              <p className="text-hint mt-1 text-text-muted">Código: {formError.correlationId}</p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-
-      <fieldset className="flex flex-col gap-5 border-0 p-0">
-        <legend className="sr-only">{FORM_COPY.legend}</legend>
-
-        {REGISTRATION_FIELDS.map((field) => {
-          const attributes = FIELD_ATTRIBUTES[field];
-          const { label, hint } = FIELD_COPY[field];
-          const message = errors[field];
-          const describedBy = [hint ? hintId(field) : null, message ? errorId(field) : null]
-            .filter(Boolean)
-            .join(' ');
-
-          return (
-            <div key={field} className="flex flex-col gap-2">
-              <label className="text-label text-text-primary" htmlFor={fieldId(field)}>
-                {label}
-              </label>
-              <input
-                id={fieldId(field)}
-                name={field}
-                value={values[field]}
-                onChange={(event) => handleChange(field, event.target.value)}
-                onBlur={() => handleBlur(field)}
-                type={attributes.type}
-                inputMode={attributes.inputMode}
-                pattern={attributes.pattern}
-                autoComplete={attributes.autoComplete}
-                autoCapitalize={attributes.autoCapitalize}
-                enterKeyHint={attributes.enterKeyHint}
-                maxLength={attributes.maxLength}
-                spellCheck={false}
-                required
-                aria-invalid={message ? true : undefined}
-                aria-describedby={describedBy || undefined}
-                // `text-input` is 1rem: below 16px, iOS Safari zooms the viewport on focus.
-                className="text-input min-h-13 rounded-xl border border-border-strong bg-ink-700 px-4 text-text-primary focus-visible:border-sky-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
-              />
-              {hint ? (
-                <p id={hintId(field)} className="text-hint text-text-muted">
-                  {hint}
-                </p>
-              ) : null}
-              {message ? (
-                // The error is never carried by colour alone: it is text, it is associated with the
-                // input through aria-describedby, and the input is aria-invalid.
-                <p id={errorId(field)} className="text-hint text-danger-300">
-                  {message}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </fieldset>
-
-      <div className="flex flex-col gap-2">
-        <p id={`${fieldsetId}-challenge`} className="text-hint text-text-muted">
-          {FORM_COPY.challengeLabel}
-        </p>
-        <TurnstileWidget
-          siteKey={siteKey}
-          challengeNonce={state.challengeNonce}
-          describedBy={`${fieldsetId}-challenge`}
-        />
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <button
-          type="submit"
-          // Not `disabled`: a disabled button leaves the tab order and drops its accessible name
-          // mid-interaction. `aria-disabled` announces the state and the handler below enforces it.
-          aria-disabled={isPending}
-          aria-busy={isPending}
-          onClick={(event) => {
-            if (isPending) event.preventDefault();
-          }}
-          className="text-label min-h-14 rounded-xl bg-gold-400 px-6 text-ink-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-900 aria-disabled:opacity-70"
+    <Panel>
+      <form action={formAction} onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+        {/*
+          The error summary (section 9.4). Above the fieldset, never below the button, so a mobile
+          keyboard cannot hide it. `tabindex=-1` plus focus, so the person is put where the problem
+          is described rather than left to discover it. Rendered as an empty, unfocusable region
+          when there is nothing to say.
+        */}
+        <div
+          ref={alertRef}
+          tabIndex={-1}
+          role="alert"
+          data-testid="registration-alert"
+          className="flex flex-col gap-4 empty:hidden"
         >
-          {isPending ? FORM_COPY.submitting : FORM_COPY.submit}
-        </button>
+          {listedErrors.length > 0 ? (
+            // An outlined panel, not a red flood fill: the border carries the signal and the text
+            // stays at full contrast.
+            <div className="rounded-field border border-danger-300 bg-ink-800 px-4 py-4">
+              <h3 className="text-h3 text-text-primary">{FORM_COPY.errorSummaryHeading}</h3>
+              <ul className="mt-3 flex flex-col gap-2">
+                {listedErrors.map((field) => (
+                  <li key={field} className="flex items-start gap-2">
+                    <AlertIcon size={16} className="mt-0.5 shrink-0 text-danger-300" />
+                    <a
+                      href={`#${fieldId(field)}`}
+                      className="text-hint u-settle text-danger-300 underline decoration-1 underline-offset-4 hover:decoration-2"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        document.getElementById(fieldId(field))?.focus();
+                      }}
+                    >
+                      {FIELD_COPY[field].label}: {errors[field]}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
-        <p aria-live="polite" className="text-hint empty:hidden text-text-muted">
-          {isPending && waitedLong ? FORM_COPY.stillWaiting : ''}
-        </p>
+          {formError ? (
+            <div className="flex items-start gap-3 rounded-field border border-danger-300 bg-ink-800 px-4 py-4">
+              <AlertIcon size={18} className="mt-0.5 shrink-0 text-danger-300" />
+              <div>
+                <p className="text-body text-text-primary">{formError.message}</p>
+                {formError.correlationId ? (
+                  <p className="text-hint mt-1 text-text-muted">Código: {formError.correlationId}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
-        <p className="text-hint text-text-muted">{FORM_COPY.privacy}</p>
-      </div>
-    </form>
+        {/*
+          A visually-hidden legend, so the group is announced without the panel gaining a second
+          heading that competes with the section's own (section 9.1).
+        */}
+        <fieldset className="flex flex-col gap-5 border-0 p-0">
+          <legend className="sr-only">{FORM_COPY.legend}</legend>
+
+          {REGISTRATION_FIELDS.map((field) => {
+            const attributes = FIELD_ATTRIBUTES[field];
+            const { label, hint } = FIELD_COPY[field];
+            const message = errors[field];
+            const describedBy = [hint ? hintId(field) : null, message ? errorId(field) : null]
+              .filter(Boolean)
+              .join(' ');
+
+            return (
+              <div key={field} className="flex flex-col gap-2">
+                {/* Label above the input, always. No floating labels, no placeholder-as-label. */}
+                <label className="text-label text-text-primary" htmlFor={fieldId(field)}>
+                  {label}
+                </label>
+                <input
+                  id={fieldId(field)}
+                  name={field}
+                  value={values[field]}
+                  onChange={(event) => handleChange(field, event.target.value)}
+                  onBlur={() => handleBlur(field)}
+                  type={attributes.type}
+                  inputMode={attributes.inputMode}
+                  pattern={attributes.pattern}
+                  autoComplete={attributes.autoComplete}
+                  autoCapitalize={attributes.autoCapitalize}
+                  enterKeyHint={attributes.enterKeyHint}
+                  maxLength={attributes.maxLength}
+                  spellCheck={false}
+                  required
+                  aria-invalid={message ? true : undefined}
+                  aria-describedby={describedBy || undefined}
+                  className={`${FIELD_CLASS} ${message ? 'border-danger-300' : 'border-border-strong'}`}
+                />
+                {hint ? (
+                  <p id={hintId(field)} className="text-hint text-text-muted">
+                    {hint}
+                  </p>
+                ) : null}
+                {message ? (
+                  // The error is never carried by colour alone: it is text, it carries an icon, it
+                  // is associated with the input through aria-describedby, and the input is
+                  // aria-invalid.
+                  <p
+                    id={errorId(field)}
+                    className="text-hint flex items-start gap-1.5 text-danger-300"
+                  >
+                    <AlertIcon size={16} className="mt-0.5 shrink-0" />
+                    <span>{message}</span>
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </fieldset>
+
+        <div className="flex flex-col gap-2">
+          <p id={`${fieldsetId}-challenge`} className="text-micro-label text-text-muted uppercase">
+            {FORM_COPY.challengeLabel}
+          </p>
+          <TurnstileWidget
+            siteKey={siteKey}
+            challengeNonce={state.challengeNonce}
+            describedBy={`${fieldsetId}-challenge`}
+          />
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <button
+            type="submit"
+            // Not `disabled`: a disabled button leaves the tab order and drops its accessible name
+            // mid-interaction. `aria-disabled` announces the state and the handler below enforces it.
+            aria-disabled={isPending}
+            aria-busy={isPending}
+            onPointerDown={() => {
+              pressingSubmit.current = true;
+            }}
+            onClick={(event) => {
+              if (isPending) event.preventDefault();
+            }}
+            className={`${CTA_PRIMARY} w-full sm:w-auto sm:self-start aria-disabled:cursor-wait aria-disabled:opacity-80`}
+          >
+            {isPending ? <SpinnerIcon /> : null}
+            {isPending ? FORM_COPY.submitting : FORM_COPY.submit}
+          </button>
+
+          <p aria-live="polite" className="text-hint empty:hidden text-text-muted">
+            {isPending && waitedLong ? FORM_COPY.stillWaiting : ''}
+          </p>
+
+          <p className="text-hint text-text-muted">
+            {FORM_COPY.privacy}{' '}
+            <Link href="/privacidade" className={CTA_TERTIARY}>
+              Como usamos seus dados
+            </Link>
+          </p>
+        </div>
+      </form>
+    </Panel>
   );
 }
 
 /**
- * The terminal panel. It replaces the fieldset in place, is announced politely, and receives focus
- * so a screen-reader user is taken to the answer rather than told one exists somewhere.
+ * The form's container — section 9.1.
+ *
+ * An `ink-800` surface with a hairline border and no shadow. Elevation on a dark page comes from
+ * surface lightness; a shadow against navy is invisible and would only cost a paint. The outcome
+ * panel reuses this exact container so that replacing the fieldset does not move the page.
  */
+function Panel({
+  children,
+  accent,
+  ...rest
+}: {
+  children: React.ReactNode;
+  /** The outcome's accent border (section 9.7). Defaults to the neutral hairline. */
+  accent?: string;
+} & React.HTMLAttributes<HTMLDivElement> &
+  React.RefAttributes<HTMLDivElement>) {
+  return (
+    <div
+      {...rest}
+      className={`rounded-panel border bg-ink-800 p-6 sm:p-8 ${accent ?? 'border-ink-600'}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The terminal panel — sections 6.1 and 9.7.
+ *
+ * It replaces the fieldset **in place**: same container, same width, so the page does not jump. It
+ * is announced politely and receives focus, so a screen-reader user is taken to the answer rather
+ * than told that one exists somewhere. The 200ms cross-fade is applied to content that is already
+ * present and already announced — nothing about the success state waits on an animation to finish.
+ *
+ * The panel's accent border is the only thing that differs by outcome, plus the secondary actions
+ * the confirmed and waitlisted answers offer. Those are secondary buttons, never a second primary.
+ *
+ * **No outcome echoes personal data.** The duplicate panel in particular carries neither the name
+ * nor the age, so guessing a phone number reveals nothing about whose it is.
+ */
+const OUTCOME_ACCENT: Readonly<Record<RegistrationOutcome['kind'], string>> = {
+  confirmed: 'border-success-300',
+  waitlisted: 'border-sky-300',
+  already_registered: 'border-border-strong',
+  full: 'border-border-strong',
+  closed: 'border-border-strong',
+  invalid: 'border-border-strong',
+  error: 'border-border-strong',
+};
+
 function OutcomePanel({
   ref,
   outcome,
+  links,
 }: {
   ref: React.Ref<HTMLDivElement>;
   outcome: RegistrationOutcome;
+  links: EventLinks;
 }) {
   const copy = outcomeCopy(outcome);
 
   return (
-    <div
+    <Panel
       ref={ref}
       tabIndex={-1}
       role="status"
       aria-live="polite"
       data-outcome={outcome.kind}
-      className="flex flex-col gap-3 rounded-xl border border-border-strong px-5 py-6 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-300"
+      accent={`${OUTCOME_ACCENT[outcome.kind]} u-outcome`}
     >
-      <h3 className="text-h2 text-text-primary">{copy.heading}</h3>
-      {copy.body.map((paragraph) => (
-        <p key={paragraph} className="text-body">
-          {paragraph}
-        </p>
-      ))}
+      <div className="flex flex-col gap-4">
+        {outcome.kind === 'confirmed' ? (
+          <p className="text-micro-label text-success-300 uppercase">Tudo certo</p>
+        ) : null}
+
+        <h3 className="text-h2 font-stretch-[105%] text-text-primary">{copy.heading}</h3>
+
+        {copy.body.map((paragraph) => (
+          <p key={paragraph} className="text-body max-w-[52ch]">
+            {paragraph}
+          </p>
+        ))}
+
+        {outcome.kind === 'confirmed' ? (
+          <OutcomeActions links={links} calendar share />
+        ) : outcome.kind === 'waitlisted' ? (
+          <OutcomeActions links={links} />
+        ) : null}
+      </div>
+    </Panel>
+  );
+}
+
+/**
+ * The confirmation's secondary actions (PRODUCT-SPEC.md section 6.1).
+ *
+ * All three are secondary buttons: the person has already done the one thing this page asks of
+ * them, so nothing here may look like a primary action.
+ *
+ * `Compartilhar` uses the Web Share sheet where the platform has one and falls back to copying the
+ * link where it does not, rather than being conditionally rendered — a button that appears only
+ * after hydration on some devices is a layout shift and a support question.
+ */
+function OutcomeActions({
+  links,
+  calendar = false,
+  share = false,
+}: {
+  links: EventLinks;
+  calendar?: boolean;
+  share?: boolean;
+}) {
+  const [shareNote, setShareNote] = useState('');
+
+  async function handleShare() {
+    const payload = { title: links.shareTitle, url: links.page };
+
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share(payload);
+        return;
+      }
+      await navigator.clipboard.writeText(links.page);
+      setShareNote('Link copiado.');
+    } catch {
+      // A cancelled share sheet and a denied clipboard both land here, and neither is a failure
+      // worth interrupting someone over: the link is on screen either way.
+      setShareNote('');
+    }
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-3">
+      {/*
+        Stacked and full width on a phone — three pills of different widths on three lines read as
+        leftovers; from `sm` they sit on one row where their natural widths are the composition.
+      */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+        {calendar ? (
+          <a className={`${CTA_SECONDARY} w-full sm:w-auto`} href={links.calendar} download>
+            <CalendarIcon size={18} />
+            Adicionar ao calendário
+          </a>
+        ) : null}
+
+        {links.map ? (
+          <a
+            className={`${CTA_SECONDARY} w-full sm:w-auto`}
+            href={links.map}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <MapPinIcon size={18} />
+            Como chegar
+          </a>
+        ) : null}
+
+        {share ? (
+          <button
+            type="button"
+            className={`${CTA_SECONDARY} w-full sm:w-auto`}
+            onClick={handleShare}
+          >
+            <ShareIcon size={18} />
+            Compartilhar
+          </button>
+        ) : null}
+      </div>
+
+      <p aria-live="polite" className="text-hint empty:hidden text-text-muted">
+        {shareNote}
+      </p>
     </div>
   );
 }

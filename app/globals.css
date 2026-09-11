@@ -2,7 +2,8 @@
 
 /*
  * Design tokens — transcribed from VISUAL-DIRECTION.md sections 3.2 and 6.2.
- * Tokens only. No components live in this file.
+ * Tokens, plus the handful of page-level primitives that cannot be expressed as utilities:
+ * the grain field, the single hero glow, and the three motion primitives of section 10.2.
  */
 @theme {
   /*
@@ -32,9 +33,22 @@
   --color-text-muted: #9fb3d9;
   --color-sky-300: #71c1fc;
   --color-gold-400: #ffc400; /* the action colour; three uses on the page, no more (section 3.4) */
+  /* Derived, exactly as `blue-400` is derived from `blue-500`: the hover state of the gold fill,
+     and nothing else. It is not a second accent and never appears at rest. */
+  --color-gold-300: #ffd23f;
   --color-border-strong: #5a6fa8; /* form field borders — 3.97:1, meets SC 1.4.11 */
+  /* The field border's pointer-hover state, named in section 9.3. Derived, like `gold-300`. */
+  --color-border-hover: #6b80b8;
   --color-danger-300: #ff8a80;
-  --color-success-300: #6ee7a8; /* admin status only */
+  --color-success-300: #6ee7a8;
+
+  /*
+   * Radii. Two values, named for what they wrap (section 14 caps radius at 24px for anything that
+   * is not a pill), so "which rounding does a panel use" has one answer rather than a guess per
+   * component.
+   */
+  --radius-panel: 20px;
+  --radius-field: 12px;
 
   /*
    * Type scale (section 6.2). Fluid via clamp(); the mobile value is the floor.
@@ -43,12 +57,24 @@
    */
   --font-sans: var(--font-archivo), system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
-  --text-display-1: clamp(3rem, 13vw, 7.5rem);
+  /*
+   * 15vw rather than section 6.2's 13vw. The section's own intent (6.3, and principle 7 of 2.2) is
+   * that `Financeira` dominates the frame and may be optically clipped on a phone; measured at
+   * 375px, 13vw sets it to 49px and leaves 45px of gutter to its right, which reads as a heading
+   * that missed rather than as a display line. 15vw fills the measure. The 7.5rem ceiling is
+   * unchanged, so every layout at and above 800px is exactly as specified.
+   */
+  --text-display-1: clamp(3rem, 15vw, 7.5rem);
   --text-display-1--line-height: 0.92;
   --text-display-1--font-weight: 800;
   --text-display-1--letter-spacing: -0.03em;
 
-  --text-display-2: clamp(1.75rem, 7vw, 3.5rem);
+  /*
+   * Raised with display-1 to hold the banner's own size relationship between the two lines —
+   * `educação` sits at roughly 55% of `Financeira` there, and the weight contrast (300 against 800)
+   * is what carries the identity, not a size gap that keeps widening as the display line grows.
+   */
+  --text-display-2: clamp(1.9rem, 8.5vw, 4rem);
   --text-display-2--line-height: 1;
   --text-display-2--font-weight: 300;
   --text-display-2--letter-spacing: -0.01em;
@@ -103,6 +129,10 @@
   --text-hint--line-height: 1.45;
   --text-hint--font-weight: 400;
   --text-hint--letter-spacing: 0;
+
+  /* The three motion primitives of section 10.2, and nothing else. */
+  --ease-rise: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-settle: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /*
@@ -117,11 +147,460 @@
     /* The public surface is dark only (section 3.7), so native controls, scrollbars and autofill
        render correctly. The admin subtree declares `light` on its own layout. */
     color-scheme: dark;
+
+    /*
+     * The sticky CTA bar's reserved height. `scroll-padding-bottom` is set from it so a field
+     * scrolled into view is never left behind the bar (WCAG 2.2 SC 2.4.11, section 9.8). The bar
+     * itself is mobile-only, so the reservation is released at `md`.
+     */
+    --sticky-cta-height: calc(76px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: var(--sticky-cta-height);
+  }
+
+  @media (width >= 48rem) {
+    :root {
+      --sticky-cta-height: 0px;
+    }
   }
 
   body {
     background-color: var(--color-ink-900);
     color: var(--color-text-secondary);
     font-family: var(--font-sans);
+    /* Optical clipping of display type is the composition (section 6.3); a document wider than the
+       viewport is a defect. `clip` rather than `hidden` so no scroll container is created. */
+    overflow-x: clip;
+  }
+
+  /*
+   * Selection picks up the identity rather than the browser's default blue-on-blue, which on this
+   * navy is nearly invisible.
+   */
+  ::selection {
+    background-color: var(--color-sky-300);
+    color: var(--color-ink-900);
+  }
+
+  /*
+   * One focus ring for the whole public surface. Declared on `:focus-visible` so a pointer user
+   * never sees it and a keyboard user always does, and never removed anywhere (section 13, item 6).
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-sky-300);
+    outline-offset: 2px;
+  }
+
+  /* Long Portuguese words never hyphenate at display size; prose may (section 6.4). */
+  h1,
+  h2,
+  h3 {
+    hyphens: none;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@layer components {
+  /*
+   * The page gutter and measure (section 4.2): 20px on mobile, and on desktop whatever is left
+   * once 1200px of content is centred. One class, used by every section, so the vertical edges of
+   * the page line up without each section restating the arithmetic.
+   */
+  .u-shell {
+    width: 100%;
+    max-width: 1200px;
+    margin-inline: auto;
+    padding-inline: 20px;
+  }
+
+  @media (width >= 48rem) {
+    .u-shell {
+      padding-inline: 24px;
+    }
+  }
+
+  /*
+   * The grain (section 7.3). One tiled feTurbulence pattern at 3%: it reproduces the banner's film
+   * grain, kills gradient banding across large navy areas, and is the cheapest single thing that
+   * makes a dark page read as art-directed rather than flat. Fixed, so it does not repaint on
+   * scroll; `pointer-events: none` and `aria-hidden` so it exists only for the eye.
+   */
+  .u-grain {
+    position: fixed;
+    inset: 0;
+    /* Above everything, because film grain sits on the print rather than under it. Harmless at
+       this opacity — the text tiers have 9:1 of headroom or more — and `pointer-events: none`
+       keeps it out of every interaction. */
+    z-index: 50;
+    pointer-events: none;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+  }
+
+  /*
+   * The single light source (sections 1.2 and 7.3). One radial gradient, in the banner's own light
+   * blue, centred behind the title lockup, static forever. The chart motif is masked to the same
+   * centre, so type, atmosphere and ornament share one implied light rather than three.
+   */
+  .u-glow {
+    position: absolute;
+    pointer-events: none;
+    width: min(140vw, 1100px);
+    aspect-ratio: 1;
+    top: -28%;
+    left: 50%;
+    translate: -50% 0;
+    background: radial-gradient(
+      circle at center,
+      color-mix(in srgb, var(--color-sky-300) 8%, transparent) 0%,
+      color-mix(in srgb, var(--color-sky-300) 3%, transparent) 38%,
+      transparent 68%
+    );
+  }
+
+  @media (width >= 64rem) {
+    /* On the asymmetric hero the light belongs where the date block and the chart's brightest
+       region are — the right half — not centred over a left-aligned type stack. */
+    .u-glow {
+      left: 68%;
+      top: -34%;
+    }
+  }
+
+  /*
+   * The chart motif's field. It bleeds past both horizontal edges, and it is masked to the same
+   * centre as the glow so the page has exactly one implied light source (sections 1.2 and 7.1) —
+   * a luminance mask rather than a second colour gradient, which section 2.2 forbids.
+   */
+  .u-chart-field {
+    position: absolute;
+    inset-inline: -12vw;
+    bottom: 0;
+    height: min(62%, 420px);
+    pointer-events: none;
+    mask-image: radial-gradient(
+      ellipse 70% 120% at 50% 100%,
+      #000 0%,
+      color-mix(in srgb, #000 55%, transparent) 55%,
+      color-mix(in srgb, #000 22%, transparent) 100%
+    );
+  }
+
+  @media (width >= 64rem) {
+    .u-chart-field {
+      height: min(78%, 560px);
+      mask-image: radial-gradient(
+        ellipse 62% 110% at 70% 78%,
+        #000 0%,
+        color-mix(in srgb, #000 55%, transparent) 58%,
+        color-mix(in srgb, #000 20%, transparent) 100%
+      );
+    }
+  }
+
+  /*
+   * The date lockup (section 5.2). `19` condensed and heavy, `SET` expanded and light, set as one
+   * object with no space between them so they join exactly as they do on the banner.
+   *
+   * The size is its own fluid rule rather than the section 6.2 token, because the token's 15vw
+   * cannot produce the outcome sections 1.9 and 5.2 both ask for — an anchor element large enough
+   * to be cropped by the frame. On a 375px phone 15vw is 56px, which sits comfortably inside the
+   * gutter. This is sized to reach the edge instead; `overflow: clip` on the hero guarantees the
+   * document never grows with it.
+   */
+  .u-date-lockup {
+    display: flex;
+    align-items: baseline;
+    font-size: clamp(4rem, 30vw, 7rem);
+    line-height: 0.85;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (width >= 48rem) {
+    .u-date-lockup {
+      font-size: clamp(4.5rem, 13vw, 6.5rem);
+    }
+  }
+
+  @media (width >= 64rem) {
+    .u-date-lockup {
+      font-size: clamp(6rem, 11vw, 11rem);
+    }
+  }
+
+  /*
+   * The Turnstile container — section 9.6.
+   *
+   * Two jobs. It **reserves its height from first paint**, so a widget that arrives after
+   * hydration cannot push the submit button down: that would be a layout shift on the most
+   * important element of the page.
+   *
+   * And it solves a size conflict that is Cloudflare's, not ours. The flexible widget fills its
+   * parent but refuses to go below 300px, which is wider than the inside of the form panel once
+   * the page gutter and the panel's own padding are taken out of a 375px phone. So on mobile the
+   * container bleeds back out through the panel's padding to recover that width, and below 360px —
+   * where even the full gutter width is short of 300px — it is zoomed down the remaining few per
+   * cent. `zoom` rather than `transform: scale`, because `zoom` affects layout and therefore cannot
+   * leave an overflowing box behind.
+   */
+  .u-challenge {
+    width: calc(100% + 48px);
+    margin-inline: -24px;
+    /*
+     * 76px, measured rather than assumed. Cloudflare documents the flexible widget as 65px tall;
+     * rendered it occupies 72px including its own wrapper, so a 70px reservation let it push the
+     * submit button down by 2px on arrival — a layout shift on the one element the page exists for,
+     * and the reason a click that landed before the widget loaded could be lost entirely. The few
+     * reserved pixels the widget does not use are invisible; the shift was not.
+     */
+    min-height: 76px;
+  }
+
+  /* Below 360px even the full gutter width is short of 300px; the last few per cent come off the
+     widget's own scale. `zoom`, not `transform: scale`, because zoom affects layout and therefore
+     cannot leave an overflowing box behind. */
+  @media (width < 22.5rem) {
+    .u-challenge {
+      zoom: 0.92;
+    }
+  }
+
+  /* From 400px the panel's own width clears 300px, so the bleed is no longer needed and the
+     widget sits inside the padding like every other control. */
+  @media (width >= 25rem) {
+    .u-challenge {
+      width: 100%;
+      margin-inline: 0;
+    }
+  }
+
+  /*
+   * The poster (section 8.2). Its entire depth model is Linkkit's: one object, one large soft
+   * ground shadow, nothing else — no 3D, no perspective, no tilt-follow-cursor.
+   *
+   * The shadow is black rather than a tinted one, because on a `#070B1E` field only black is dark
+   * enough to register at all. This is the one place a shadow is used on the public page; the form
+   * panel deliberately has none (section 9.1), since elevation there comes from surface lightness.
+   */
+  .u-poster {
+    box-shadow: 0 32px 64px -24px rgb(0 0 0 / 0.85);
+    /* Transform only. The shadow is static: section 14 bans animating `box-shadow`, and it is
+       right to — a shadow transition repaints a large blurred area every frame, which is exactly
+       the work a mid-range Android cannot spare. */
+    transition: transform 300ms var(--ease-rise);
+  }
+
+  /* Pointer-fine only: a hover state on a touch screen fires on tap and then sticks. */
+  @media (hover: hover) and (pointer: fine) {
+    .u-poster:hover {
+      transform: rotate(-1.5deg) scale(1.01);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .u-poster,
+    .u-poster:hover {
+      transition: none;
+      transform: none;
+    }
+  }
+
+  /*
+   * Depth is layering and occlusion, never a translucent panel (section 7.2). Three planes, named
+   * so a later edit cannot invent a fourth: back holds the atmosphere, middle the type, front the
+   * two elements that overlap the chart's brightest region.
+   */
+  .u-plane-back {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .u-plane-middle {
+    position: relative;
+    z-index: 1;
+  }
+
+  .u-plane-front {
+    position: relative;
+    z-index: 2;
+  }
+}
+
+/* ================================================================================================
+ * Motion — section 10.
+ *
+ * Three primitives, and everything on the page is one of them. Only `opacity` and `transform` are
+ * animated, with the single documented exception of the chart's one-off `stroke-dashoffset` draw
+ * (section 10.3), which is one path, once, and decorative.
+ * ============================================================================================== */
+
+@keyframes u-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes u-draw {
+  from {
+    stroke-dashoffset: var(--draw-length);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes u-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes u-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer components {
+  /*
+   * The hero's entrance: pure CSS, no JavaScript, once on load, under 700ms end to end. The
+   * stagger is an `animation-delay` set per element by `--rise-step`.
+   *
+   * Ordering note: the display-1 line is deliberately early in the sequence. It is the LCP element
+   * (ARCHITECTURE.md section 8.2), and every millisecond it spends at `opacity: 0` is a millisecond
+   * added to LCP.
+   */
+  .u-rise {
+    animation: u-rise 380ms var(--ease-rise) both;
+    animation-delay: calc(var(--rise-step, 0) * 60ms);
+  }
+
+  /*
+   * Reveal-on-scroll is **additive** (section 10.5). The initial `opacity: 0` exists only under
+   * `.js-reveal`, a class JavaScript adds on mount — so a script error, a slow bundle or a blocked
+   * domain leaves the content fully visible rather than leaving a blank page.
+   */
+  .js-reveal .u-reveal {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  .js-reveal .u-reveal[data-revealed='true'] {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 300ms var(--ease-rise),
+      transform 300ms var(--ease-rise);
+  }
+
+  /*
+   * `press` — touch confirmation, 120ms, transform only.
+   *
+   * Declared **before** `.u-settle`, because every button wears both and the later `transition`
+   * declaration wins outright rather than merging. With the order reversed, press silently
+   * cancelled settle and the CTA's hover stopped transitioning.
+   */
+  .u-press {
+    transition: transform 120ms var(--ease-settle);
+  }
+
+  .u-press:active {
+    transform: scale(0.98);
+  }
+
+  /* `settle` — the 150ms interaction transition, carrying press's transform so an element with
+     both classes keeps both behaviours. */
+  .u-settle {
+    transition:
+      background-color 150ms var(--ease-settle),
+      border-color 150ms var(--ease-settle),
+      color 150ms var(--ease-settle),
+      opacity 150ms var(--ease-settle),
+      transform 120ms var(--ease-settle);
+  }
+
+  /* The chart's one-off draw. `--draw-length` is set inline from the path's own length. */
+  .u-draw {
+    stroke-dasharray: var(--draw-length);
+    animation: u-draw 1200ms ease-out 200ms both;
+  }
+
+  /*
+   * The outcome panel's cross-fade (section 9.7). An animation rather than a transition, so it
+   * always completes; and 200ms of opacity on content that is already in the DOM and already
+   * announced, so nothing about the success state depends on it finishing.
+   */
+  .u-outcome {
+    animation: u-fade-in 200ms var(--ease-settle) both;
+  }
+
+  /*
+   * The one loop on the page, and the exception section 10.4 allows: a progress indicator reports
+   * that work is happening, which is information rather than decoration. It exists only while a
+   * submission is in flight.
+   */
+  .u-spin {
+    animation: u-spin 800ms linear infinite;
+  }
+}
+
+/*
+ * Reduced motion (section 10.6). Choreography is removed; feedback is kept — stripping hover and
+ * focus transitions as well would harm usability rather than protect anyone. No content is hidden
+ * and nothing is left mid-animation: every element sits at its final state immediately, and the
+ * chart renders fully drawn.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .u-rise,
+  .u-draw {
+    animation: none;
+  }
+
+  .u-draw {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+  }
+
+  .js-reveal .u-reveal,
+  .js-reveal .u-reveal[data-revealed='true'] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  /* Order matters here too: press first, settle after, so a button keeps its 80ms feedback. */
+  .u-press,
+  .u-press:active {
+    transition: none;
+    transform: none;
+  }
+
+  .u-settle {
+    transition: opacity 80ms linear;
+  }
+
+  /* The ring stays, still: the button's own label already reads `Confirmando…`. */
+  .u-spin {
+    animation: none;
+  }
+
+  /* The outcome is simply there. It was never waiting on the fade. */
+  .u-outcome {
+    animation: none;
   }
 }

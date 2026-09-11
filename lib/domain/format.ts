@@ -81,6 +81,39 @@ export function formatTime(value: Date): string {
   return timeFormatter.format(value);
 }
 
+/*
+ * The two halves of the hero's decorative date lockup (VISUAL-DIRECTION.md section 5.2). They are
+ * derived from the event row rather than written by hand, so the banner's `19SET` and the page's
+ * `19 de setembro de 2026` can never disagree — and they are still bound to São Paulo, so a server
+ * rendering in UTC cannot roll the day over.
+ */
+
+const dayFormatter = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: EVENT_TIME_ZONE,
+  day: '2-digit',
+});
+
+const monthAbbreviationFormatter = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: EVENT_TIME_ZONE,
+  month: 'short',
+});
+
+/** `19` — two digits, as printed on the banner. */
+export function formatDayNumber(value: Date): string {
+  return dayFormatter.format(value);
+}
+
+/**
+ * `SET` — the three-letter month, upper case.
+ *
+ * `Intl` renders pt-BR short months as `set.`; the trailing point is dropped and the result is
+ * upper-cased here rather than by `text-transform`, because this string is consumed by an
+ * `aria-hidden` lockup where no assistive technology will read it letter by letter.
+ */
+export function formatMonthAbbreviation(value: Date): string {
+  return monthAbbreviationFormatter.format(value).replace(/\W/g, '').toUpperCase();
+}
+
 /**
  * `19h às 21h` — how a Brazilian reader expects an event window, and how the banner writes it.
  *
