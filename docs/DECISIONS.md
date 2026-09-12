@@ -489,7 +489,7 @@ defaults recorded here.
 | --- | --- | --- |
 | **Q2** data controller | Launch (`/privacidade`) | none — must be a real answer |
 | **Q3** contact channel | ~~Launch~~ — **answered**: `contato@euqueroadh.com` | resolved |
-| **Q4** retention period | Launch (`/privacidade`) | 90 days after the event |
+| **Q4** retention period | ~~Launch~~ — **answered**: up to 30 days after the event | resolved |
 | **Q5** production SMTP | Launch (admin sign-in in production) | local mail catcher from `supabase start` |
 | **Q6** real capacity | Launch (opening registrations) | seeded `closed` with `capacity = 0`, which the schema refuses to open |
 | **Q8** minors decision | Launch (`/privacidade`, lawful collection) | no business age restriction; technical bounds 1–120 only |
@@ -521,9 +521,20 @@ notice's `Correção e exclusão` section and by the under-12 registration panel
 
 *No longer blocks launch.*
 
-#### Q4 · How long is registration data retained after the event?
+#### Q4 · How long is registration data retained after the event? — **ANSWERED (12 September 2026)**
 
-**Recommended default: 90 days**, then permanent deletion through
+**Answer: up to 30 days after the event**, then deletion or anonymisation — except where retention is necessary to comply with a legal obligation or to exercise and defend rights.
+
+Published on `/privacidade` as a fact. The mechanism is unchanged and already built: an organizer
+presses `Encerrar evento e apagar dados`, which calls `purge_event_registrations()` once, atomically,
+and records the counts. Nothing schedules itself — the notice promises a period, and a human
+performs the deletion inside it.
+
+*No longer blocks launch.* The **exception clause is deliberate** and must not be softened into an
+unconditional promise: a legal-hold obligation would otherwise put the notice in conflict with the
+law it exists to satisfy.
+
+*Superseded recommendation (kept for the record): 90 days*, then permanent deletion through
 `Encerrar evento e apagar dados` ([ADMIN-SPEC.md § 6.4](./ADMIN-SPEC.md)), which is now a real
 atomic operation (D26).
 
@@ -646,6 +657,20 @@ The banner prints it without the circumflex; Brazilian street registries commonl
 
 ---
 
+### Where Q2 stands after the launch hotfix
+
+`/privacidade` is published and final. It names the three organizers as the banner names them and
+gives one contact channel, and it does **not** designate one of them as the formal `controlador`,
+because the repository does not record which one that is.
+
+That remains a real internal question and is still tracked as **Q2** — but it is no longer a
+*public-facing* blocker, and the public notice must not be edited to say that it is. "We have not
+decided who is legally responsible for your data" is not information a participant can act on; it is
+a sentence that damages trust while answering nothing. When the organizers designate the controller,
+adding the name is a one-line edit to `app/privacidade/page.tsx`.
+
+---
+
 ## Part 3 — Summary for the implementer
 
 **Start now.** Nothing on this list blocks Phase 0.
@@ -654,7 +679,7 @@ The banner prints it without the circumflex; Brazilian street registries commonl
 | --- | --- |
 | **Resolved** | Q1 — the event is **19 September 2026**, 19:00–21:00, `America/Sao_Paulo`. |
 | **Blocks implementation** | **Nothing.** |
-| **Blocks production launch** | Q2 (data controller), Q4 (retention), Q5 (production SMTP), Q6 (real capacity), Q8 (minors privacy handling). **Resolved:** Q3 (contact channel — `contato@euqueroadh.com`) and Q7 (age policy — online minimum 12). Collected as the launch gate in [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) Phase 7. |
+| **Blocks production launch** | Q5 (production SMTP), Q6 (real capacity), Q8 (minors privacy handling). **Resolved:** Q3 (contact channel — `contato@euqueroadh.com`), Q4 (retention — up to 30 days) and Q7 (age policy — online minimum 12). **Q2 (data controller) is now an internal question only** — see below. Collected as the launch gate in [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) Phase 7. |
 | **Blocks one feature** | Q10 (speaker section), Q11 (vector logos). |
 | **Blocks nothing** | Q7, Q9, Q12 — documented defaults apply. |
 

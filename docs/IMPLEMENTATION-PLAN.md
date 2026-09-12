@@ -403,7 +403,8 @@ outcome. Submitting without a valid token writes nothing. It looks like nothing 
 - The sticky mobile CTA with `scroll-padding-bottom`.
 - Motion: three CSS primitives, one `IntersectionObserver`, the **additive** reveal rule (§ 10.5),
   and the reduced-motion block.
-- `/privacidade` — blocked on Q2–Q4.
+- `/privacidade` — published and final as of the September 2026 launch hotfix (Q3, Q4 and Q7
+  answered; Q2 kept internal).
 - `opengraph-image.tsx`, `robots.ts`, `sitemap.ts`, `/evento.ics`.
 - Assets: the poster through `next/image`; logos as SVG if supplied, otherwise 3× WebP crops.
 
@@ -513,7 +514,7 @@ block going live. Each maps to a question in [DECISIONS.md](./DECISIONS.md).
 | # | Gate | Blocks | Owner |
 | --- | --- | --- | --- |
 | 1 | **Production SMTP configured** and verified by a real administrator sign-in (Q5) | Admin sign-in in production. Development uses the local mail catcher. | Organizers + implementer |
-| 2 | **`/privacidade` published** with a named data controller (Q2) and a stated retention period (Q4). The contact channel (Q3) is answered and published: `contato@euqueroadh.com`. | Lawful collection | Organizers |
+| 2 | ~~**`/privacidade` published**~~ — **done**. The notice is final and indexed: three organizers named, contact channel `contato@euqueroadh.com` (Q3), retention up to 30 days after the event (Q4), online minimum age 12 (Q7). Designating the formal controller (Q2) remains internal and is a one-line edit when decided. | — | Implementer |
 | 3 | **Minors decision recorded** — whether under-18s are expected, and what privacy handling the organizers determined is appropriate (Q8, [PRODUCT-SPEC.md § 12.1](./PRODUCT-SPEC.md)). The age-limit half is **answered and implemented**: online registration is 12 and over, enforced by `events.min_age`, with under-12s directed to `contato@euqueroadh.com`. | Lawful collection. **Not legal advice** — the specification requires an answer, not a particular answer. | Organizers |
 | 4 | **Real capacity configured** and registrations deliberately opened (Q6) | Registration. The event is seeded `closed` with `capacity = 0` and refuses to open until this is done, so forgetting fails safe. | Organizers |
 | 5 | ~~Contact channel wired in (Q3)~~ — **done**: `ORGANIZATION_EMAIL` in `lib/domain/schemas.ts` feeds the privacy notice and the under-12 panel | — | Implementer |

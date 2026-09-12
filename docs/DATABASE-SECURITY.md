@@ -2070,7 +2070,7 @@ proportionate controls.
 | **Accountability** | Every administrative touch of personal data — cancel, promote, edit, delete, export, purge — is recorded in `admin_actions`, **in the same transaction as the action itself** (**I9**, § 6.7). The record survives deletion of both the registration and the administrator (§ 3.6). |
 | **Export protection** | § 10. |
 | **Right to erasure** | `delete_registration()` performs a real hard delete for one participant; `purge_event_registrations()` does the same for an entire event, atomically (§ 6.5). `cancelled` is the routine operational state; deletion is the privacy action, and the two are deliberately separate. |
-| **Retention** | Recommended default: purge all registrations 90 days after the event, through the explicit, audited `registrations.purged` action. A human confirming deletion is more appropriate than a silent job for a one-off event. `pg_cron` is the later option if this becomes recurring. |
+| **Retention** | **Up to 30 days after the event** (DECISIONS.md Q4, answered September 2026), then deletion or anonymisation, except where retention is required by a legal obligation or to exercise and defend rights. Published on `/privacidade`. Performed through the explicit, audited `registrations.purged` action: a human confirming deletion is more appropriate than a silent job for a one-off event, and `pg_cron` is the later option if this becomes recurring. **Nothing enforces the 30 days automatically** — the purge is an operational task inside the window the notice promises. |
 | **Logging** | `full_name`, `phone_e164` and `age` are never logged, and never appear in `admin_actions.metadata`. Logs carry identifiers, outcomes, durations and a correlation ID. |
 | **Backups** | Supabase managed. Note that a 90-day retention promise interacts with backup retention — the organizers should be told what the platform's backup window actually is rather than being promised something the platform does not deliver. |
 
@@ -2101,9 +2101,12 @@ launch checklist in [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) Phase 7.
 ### 12.2 Items that block a lawful privacy notice
 
 Four items must be answered by a human before `/privacidade` can be published, and therefore before
-launch: the **data controller's identity** (Q2), the **retention period** (Q4), and the **minors privacy
-decision** above (Q8). The **contact channel** (Q3) is answered: `contato@euqueroadh.com`, published
-on `/privacidade`. None of the remaining items blocks
+launch: the **minors privacy decision** above (Q8). Three of the four are answered and published on
+`/privacidade`: the **contact channel** (Q3) is `contato@euqueroadh.com`, the **retention period**
+(Q4) is up to 30 days after the event, and the online **minimum age** (Q7) is 12. The **data
+controller's identity** (Q2) is still undecided, but it is an *internal* question: the notice names
+the three organizers and one contact channel without designating one of them as controller, and it
+must not be edited to announce the uncertainty. None of the remaining items blocks
 implementation. See [DECISIONS.md](./DECISIONS.md).
 
 ---

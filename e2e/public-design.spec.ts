@@ -658,3 +658,224 @@ test.describe('the page structure', () => {
     await expect(page.locator('main')).toContainText('19 de setembro de 2026');
   });
 });
+
+
+/* ================================================================================================
+ * The footer credit, and the finalised privacy notice
+ * ============================================================================================== */
+
+test.describe('the footer credit', () => {
+  test('sits at the absolute bottom, links to GitHub, and opens safely', async ({ page }) => {
+    await page.goto('/');
+
+    const footer = page.locator('footer');
+    await expect(footer).toHaveCount(1);
+    await expect(footer).toContainText('Desenvolvido por');
+    await expect(footer).toContainText('Igor Felipe');
+
+    const github = footer.getByRole('link', { name: /Perfil de Igor Felipe no GitHub/ });
+
+    await expect(github).toBeVisible();
+    await expect(github).toHaveAttribute('href', 'https://github.com/IgorFelipe7');
+    await expect(github).toHaveAttribute('target', '_blank');
+    // `noopener` is the security half: without it the opened tab gets a handle on this one.
+    await expect(github).toHaveAttribute('rel', /noopener/);
+    await expect(github).toHaveAttribute('rel', /noreferrer/);
+    await expect(github).toHaveText(/GitHub/);
+
+    // Last in the document: nothing of the organizers' or the event's belongs below it.
+    const creditIsLast = await page.evaluate(() => {
+      const anchors = [...document.querySelectorAll('footer a')];
+      const credit = anchors.find((node) =>
+        node.getAttribute('href')?.includes('github.com'),
+      );
+      return credit ? anchors.indexOf(credit) === anchors.length - 1 : false;
+    });
+    expect(creditIsLast, 'the credit is the last thing in the footer').toBe(true);
+
+    /*
+     * One anchor, not two. The name and the `GitHub` affordance are a single link, so a keyboard
+     * user meets one stop here — and the underline under the name is that link's own affordance
+     * rather than a decoration sitting beside a different target.
+     */
+    // Two links in the whole footer: the privacy notice, and this one.
+    await expect(footer.getByRole('link')).toHaveCount(2);
+    expect(await github.innerText()).toMatch(/Igor Felipe[\s\S]*GitHub/);
+
+    // The GitHub mark is decorative: the anchor's own aria-label carries the real name.
+    const mark = github.locator('svg');
+    await expect(mark).toHaveCount(1);
+    await expect(mark).toHaveAttribute('aria-hidden', 'true');
+
+    // It carries no second personal detail, and no e-mail address.
+    await expect(footer).not.toContainText('@');
+  });
+
+  test('is legible and does not overflow at 390px', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+
+    const github = page.getByRole('link', { name: /Perfil de Igor Felipe no GitHub/ });
+    await github.scrollIntoViewIfNeeded();
+
+    const box = await github.boundingBox();
+    expect(box).not.toBeNull();
+    // The 24px floor of WCAG 2.2 SC 2.5.8, at the size a thumb actually meets it.
+    expect(box!.height).toBeGreaterThanOrEqual(24);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+
+    // The public page never scrolls sideways, credit included.
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
+  });
+
+  test('is not repeated in the admin area', async ({ page }) => {
+    await page.goto('/admin/entrar');
+    await expect(page.getByText('Desenvolvido por')).toHaveCount(0);
+    await expect(page.locator('a[href*="github.com"]')).toHaveCount(0);
+  });
+
+  /**
+   * The `sky-300` rule under the name draws itself on hover and focus. It is the page's one piece of
+   * motion below the fold, and it echoes the Financial Journey Line deliberately — so it is worth a
+   * test that it actually moves, and that the permanent hairline beneath it is there at rest so the
+   * link is never identified by colour alone (SC 1.4.1).
+   */
+  test('the rule under the name draws itself, over a hairline that is always there', async ({
+    page,
+  }) => {
+    await page.goto('/');
+
+    const name = page.locator('.u-credit-underline');
+    await expect(name).toHaveCount(1);
+    await name.scrollIntoViewIfNeeded();
+
+    const scaleOf = (pseudo: '::before' | '::after') =>
+      page.evaluate((selector) => {
+        const element = document.querySelector('.u-credit-underline');
+        if (!element) return null;
+        const style = getComputedStyle(element, selector);
+        return { transform: style.transform, height: style.height, colour: style.backgroundColor };
+      }, pseudo);
+
+    // At rest: the hairline is drawn at full width, the sky rule is collapsed.
+    const hairline = await scaleOf('::before');
+    expect(hairline?.height).toBe('1px');
+    expect(hairline?.colour).not.toBe('rgba(0, 0, 0, 0)');
+
+    const atRest = await scaleOf('::after');
+    expect(atRest?.transform).toMatch(/matrix\(0,/);
+
+    // On hover it spans the name.
+    await page.getByRole('link', { name: /Perfil de Igor Felipe no GitHub/ }).hover();
+    await page.waitForTimeout(600);
+
+    const hovered = await scaleOf('::after');
+    expect(hovered?.transform).toMatch(/matrix\(1,/);
+  });
+
+  test('with prefers-reduced-motion the rule arrives without travelling', async ({ browser }) => {
+    const context = await browser.newContext({ reducedMotion: 'reduce' });
+    const page = await context.newPage();
+
+    try {
+      await page.goto('/');
+      const transition = await page.evaluate(() => {
+        const element = document.querySelector('.u-credit-underline');
+        return element ? getComputedStyle(element, '::after').transitionDuration : null;
+      });
+
+      // No sweep. The end state is still reached on hover; it is simply not animated to.
+      expect(transition).toMatch(/^0s/);
+    } finally {
+      await context.close();
+    }
+  });
+});
+
+test.describe('the privacy notice', () => {
+  /**
+   * The page used to publish its own open questions. It no longer may: it is linked from the
+   * registration form, it is indexed, and "this page is not complete" is not something a
+   * participant deciding whether to hand over a telephone number can act on.
+   */
+  test('states no pending or incomplete information', async ({ page }) => {
+    await page.goto('/privacidade');
+    await expect(page.getByRole('heading', { name: 'Privacidade', level: 1 })).toBeVisible();
+
+    const text = (await page.locator('main').innerText()).toLowerCase();
+
+    for (const phrase of [
+      'ainda não está completa',
+      'ainda não foram publicadas',
+      'não está completa',
+      'a definir',
+      'a ser definido',
+      'pendente',
+      'em breve',
+    ]) {
+      expect(text, `the notice must not say "${phrase}"`).not.toContain(phrase);
+    }
+  });
+
+  test('carries every required section, the contact channel and the retention period', async ({
+    page,
+  }) => {
+    await page.goto('/privacidade');
+
+    for (const heading of [
+      'Quem organiza o evento',
+      'Quais dados coletamos',
+      'Para que usamos seus dados',
+      'Com quem os dados podem ser compartilhados',
+      'Adolescentes',
+      'Por quanto tempo guardamos os dados',
+      'Seus direitos',
+      'Segurança',
+      'Atualizações deste aviso',
+    ]) {
+      await expect(page.getByRole('heading', { name: heading, level: 2 })).toBeVisible();
+    }
+
+    const main = page.locator('main');
+
+    // The three organizers, named as the banner names them.
+    await expect(main).toContainText('Marcados pela Graça');
+    await expect(main).toContainText('Ministério Teen');
+    await expect(main).toContainText('Assembleia de Deus Ministério do Belém em Hortolândia');
+
+    await expect(main).toContainText('12 anos ou mais');
+    await expect(main).toContainText('até 30 dias após a realização do evento');
+    await expect(main).toContainText('Última atualização: 12 de setembro de 2026.');
+    await expect(main).toContainText(
+      'Não vendemos os dados dos participantes e não utilizamos os dados da inscrição para publicidade ou marketing.',
+    );
+
+    // The contact channel is a real mailto, in every place that promises one.
+    const mails = main.getByRole('link', { name: 'contato@euqueroadh.com' });
+    expect(await mails.count()).toBeGreaterThanOrEqual(3);
+    await expect(mails.first()).toHaveAttribute('href', 'mailto:contato@euqueroadh.com');
+  });
+
+  /**
+   * Nothing the repository does not know may appear here: a fabricated CNPJ or address reads
+   * exactly like a real one, and nobody would come back to check.
+   */
+  test('invents no legal identity, and claims nothing untrue', async ({ page }) => {
+    await page.goto('/privacidade');
+    const text = await page.locator('main').innerText();
+
+    expect(text).not.toMatch(/CNPJ/i);
+    expect(text).not.toMatch(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/);
+    // No telephone number, and no street address invented for the organization.
+    expect(text).not.toMatch(/\(\d{2}\)\s?\d{4,5}-\d{4}/);
+    // No claim the product cannot keep.
+    expect(text.toLowerCase()).not.toContain('cookies de');
+    expect(text.toLowerCase()).not.toContain('google analytics');
+    expect(text.toLowerCase()).not.toContain('totalmente seguro');
+    // No guardian field and no consent checkbox is offered anywhere.
+    expect(text.toLowerCase()).not.toContain('autorização do responsável');
+  });
+});

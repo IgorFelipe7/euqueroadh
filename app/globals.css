@@ -1119,6 +1119,67 @@
   }
 
   /*
+   * The footer credit's underline — the one piece of motion below the fold.
+   *
+   * Two rules stacked on one element, and each answers a different requirement:
+   *
+   *   * `::before` is a permanent hairline. With the name set in `text-primary` and the sentence
+   *     around it in `text-muted`, an underline that only existed on hover would leave the link
+   *     distinguished by colour alone at rest (SC 1.4.1). This is what makes it legibly a link
+   *     before anyone touches it.
+   *   * `::after` is the `sky-300` rule that draws itself across that hairline from the left. It is
+   *     a deliberate echo of the Financial Journey Line, which is the page's central motif: the
+   *     whole site is a line that rises and arrives, and the credit is where it signs off. `scaleX`
+   *     on a pseudo-element is compositor-only — no layout, no paint of the text beside it.
+   *
+   * `right: 0` on both, so the rule spans exactly the name and stops: it must not run under the
+   * `GitHub ↗` beside it, which is a separate thought.
+   */
+  .u-credit-underline {
+    position: relative;
+  }
+
+  .u-credit-underline::before,
+  .u-credit-underline::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -0.28em;
+    left: 0;
+    border-radius: 999px;
+    pointer-events: none;
+  }
+
+  .u-credit-underline::before {
+    height: 1px;
+    background-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  }
+
+  .u-credit-underline::after {
+    height: 2px;
+    background-color: var(--color-sky-300);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 460ms var(--ease-rise);
+  }
+
+  .u-credit:hover .u-credit-underline::after,
+  .u-credit:focus-visible .u-credit-underline::after {
+    transform: scaleX(1);
+  }
+
+  /* The arrow leans towards where it is going, 2px, on the same gesture. */
+  .u-credit-arrow {
+    display: inline-block;
+    transition: transform 260ms var(--ease-rise);
+  }
+
+  .u-credit:hover .u-credit-arrow,
+  .u-credit:focus-visible .u-credit-arrow {
+    transform: translate(2px, -2px);
+  }
+
+  /*
    * `press` — touch confirmation, 120ms, transform only.
    *
    * Declared **before** `.u-settle`, because every button wears both and the later `transition`
@@ -1191,6 +1252,20 @@
     opacity: 1;
     transform: none;
     transition: none;
+  }
+
+  /*
+   * The credit's rule still lights up — it is feedback on a link, not choreography — but it arrives
+   * rather than sweeping across. The permanent hairline beneath it never moved in the first place.
+   */
+  .u-credit-underline::after,
+  .u-credit-arrow {
+    transition: none;
+  }
+
+  .u-credit:hover .u-credit-arrow,
+  .u-credit:focus-visible .u-credit-arrow {
+    transform: none;
   }
 
   /* Order matters here too: press first, settle after, so a button keeps its 80ms feedback. */

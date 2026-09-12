@@ -574,7 +574,9 @@ Technical measures are in [DATABASE-SECURITY.md § 11](./DATABASE-SECURITY.md). 
    `/privacidade`. Not a checkbox — a checkbox for the data strictly necessary to perform the
    requested service is friction without meaning.
 3. **The participant list is never public.** No count, no names, no "quem vai" section.
-4. **Retention.** Recommended default: hard-delete all registrations 90 days after the event, via the
+4. **Retention.** **Up to 30 days after the event** (DECISIONS.md Q4, answered September 2026), then
+   deletion or anonymisation, except where retention is required by a legal obligation or to
+   exercise and defend rights — published on `/privacidade`. Performed via the
    explicit, audited `Encerrar evento e apagar dados` action (§ 8.4). A human confirming deletion is
    more appropriate than a silent cron job for a one-off event. **[O]**
 5. **Accountability.** Every administrative action that touches personal data — correcting, cancelling,
@@ -667,8 +669,11 @@ V1 is done when every statement below is demonstrably true. Each maps to a test 
 
 **Launch gates (production only — do not block implementation)**
 
-28. `/privacidade` is published with a named data controller, a working contact channel and a stated
-    retention period (Q2–Q4).
+28. ~~`/privacidade` is published~~ — **met**. The notice is final and indexed: the three organizers
+    are named, the contact channel is `contato@euqueroadh.com` (Q3), retention is up to 30 days
+    after the event (Q4) and the online minimum age is 12 (Q7). Designating the formal data
+    controller (Q2) is still open, but it is an internal question — the notice does not claim one
+    and does not announce the uncertainty to the reader.
 29. The organizers have recorded their answer to the minors question (§ 12.1, Q8).
 30. A real capacity is configured and registrations are deliberately opened (§ 8.1.1).
 31. Production SMTP is configured and a real administrator sign-in has been performed end to end.

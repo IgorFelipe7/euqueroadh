@@ -95,7 +95,7 @@ test('the event page has no violations at 390px or at 1440px', async ({ page }) 
 test('the privacy notice has no violations', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/privacidade');
-  await expect(page.getByRole('heading', { name: 'Como usamos seus dados' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Privacidade', level: 1 })).toBeVisible();
   await scan(page, '/privacidade');
 });
 

@@ -1,25 +1,26 @@
 /**
  * `/privacidade` — PRODUCT-SPEC.md section 12, IMPLEMENTATION-PLAN.md Phase 5.
  *
- * **This page is deliberately incomplete, and says so on its face.**
+ * **This notice is final and is indexed.** It replaced an explicitly incomplete page that named its
+ * own open questions on its face; the organizers have since answered the two that mattered to a
+ * reader — the contact channel (`contato@euqueroadh.com`) and the retention period (30 days after
+ * the event) — so the page now states facts rather than pending items, and `robots.index` is on.
  *
- * Two facts a privacy notice must carry are still not known: which of the three `REALIZAÇÃO`
- * entities is the data controller (Q2), and how long registration data is kept after the event
- * (Q4). DECISIONS.md records a recommended default for each and marks both as **blocking launch**.
+ * **Nothing here is invented.** There is no CNPJ, no address, no telephone number, no named DPO and
+ * no single named controller, because the repository does not record any of them and a fabricated
+ * one reads exactly like a real one. The three organizers are named as the banner names them
+ * (EVENT-SOURCE-OF-TRUTH.md section 5, mirrored by `components/site/credits.tsx`), and the contact
+ * channel is the one published address. Which of the three is the formal controller is still an
+ * internal question; it is tracked in DECISIONS.md and deliberately not raised with the reader,
+ * because "we have not decided who is legally responsible" is not information a participant can act
+ * on.
  *
- * Q3 — the channel a participant uses to exercise their rights — **has been answered**:
- * `contato@euqueroadh.com`, the organization's published address. It is stated below as a fact
- * rather than as a pending item. Q2 and Q4 are not, and are not invented here.
+ * Every factual claim below is one the implementation actually keeps:
  *
- * Inventing them would be the worst possible outcome: a fabricated controller and a fabricated
- * retention period read exactly like real ones, and nobody would ever come back to check. So this
- * page publishes only what the specification actually supports — what is collected, why, who can
- * see it, and what is never done with it — and states the three open items in the open, as a
- * visible notice rather than as a code comment.
- *
- * Acceptance criterion 28 is the gate: the notice is not launch-ready until Q2–Q4 have real
- * answers. When they arrive, the notice at the top of the page is replaced by the three facts and
- * `robots.index` is turned back on — an edit to this file and nothing else.
+ *   * three fields and no more — `registrationInputSchema` has exactly three keys;
+ *   * a 12-year floor — `events.min_age`, enforced inside `register_for_event()`;
+ *   * no marketing, no profiling, no analytics — there is no such code and no such vendor;
+ *   * restricted administrative access — `admin_users` plus RLS, audited per action.
  *
  * Static. Nothing here depends on a request or on the database.
  */
@@ -30,15 +31,16 @@ import { Grain } from '@/components/site/grain';
 import { CTA_TERTIARY } from '@/components/site/cta';
 import { ORGANIZATION_EMAIL, PUBLIC_AGE_MIN } from '@/lib/domain/schemas';
 
+/** The date this copy was last revised, rendered once and stated to the reader. */
+const LAST_UPDATED = '12 de setembro de 2026';
+
 export const metadata: Metadata = {
-  title: 'Como usamos seus dados',
+  title: 'Privacidade',
   description:
-    'O que a inscrição na Palestra — Educação Financeira para Jovens coleta, por que coleta e ' +
-    'quem tem acesso.',
+    'Como os dados informados na inscrição da Palestra Educação Financeira para Jovens são ' +
+    'utilizados, com quem podem ser compartilhados e por quanto tempo são guardados.',
   alternates: { canonical: '/privacidade' },
-  // A notice that is still missing its controller and its retention period should not be indexed
-  // as if it were final.
-  robots: { index: false, follow: true },
+  robots: { index: true, follow: true },
 };
 
 export default function PrivacyNotice() {
@@ -53,106 +55,124 @@ export default function PrivacyNotice() {
             </Link>
           </p>
 
-          <p className="text-micro-label mt-2 text-sky-300 uppercase">Privacidade</p>
-          <h1 className="text-h2 font-stretch-[105%] text-text-primary">
-            Como usamos seus dados
-          </h1>
+          <h1 className="text-h2 mt-2 font-stretch-[105%] text-text-primary">Privacidade</h1>
           <p className="text-body text-text-secondary">
-            Esta página explica o que a inscrição nesta palestra coleta e o que é feito com isso.
+            Este aviso explica de forma simples como os dados informados na inscrição da Palestra
+            Educação Financeira para Jovens são utilizados e protegidos.
           </p>
         </header>
 
-        {/*
-          The open items, stated plainly. `role="note"` rather than `alert`: it is context for the
-          reader, not an interruption.
-        */}
-        <section
-          aria-labelledby="pendencias-titulo"
-          role="note"
-          className="rounded-panel border border-sky-300/50 bg-ink-800 p-6"
-        >
-          <h2 id="pendencias-titulo" className="text-h3 text-text-primary">
-            Esta página ainda não está completa
-          </h2>
-          <p className="text-body mt-3 text-text-secondary">
-            Duas informações dependem de uma definição da organização e ainda não foram publicadas:
-          </p>
-          <ul className="text-body mt-3 flex list-disc flex-col gap-2 pl-5 text-text-secondary">
-            <li>qual das organizações responde legalmente pelos dados;</li>
-            <li>por quanto tempo os dados são guardados depois do evento.</li>
-          </ul>
-          <p className="text-body mt-3 text-text-secondary">
-            Enquanto isso não for definido e publicado aqui, as inscrições permanecem encerradas.
-          </p>
-        </section>
-
-        <Article title="O que é coletado" id="coleta">
-          <p>Três informações, e nenhuma outra:</p>
-          <ul className="flex list-disc flex-col gap-2 pl-5">
-            <li>seu nome;</li>
-            <li>sua idade;</li>
-            <li>seu número de celular.</li>
-          </ul>
+        <Article title="Quem organiza o evento" id="organizacao">
           <p>
-            Não pedimos e-mail, CPF, data de nascimento, endereço nem qualquer outro dado. Não há
-            cadastro, não há senha e não existe conta de participante.
+            O evento é organizado por Marcados pela Graça, Ministério Teen e Assembleia de Deus
+            Ministério do Belém em Hortolândia.
           </p>
           <p>
-            A inscrição pelo site é para pessoas de {PUBLIC_AGE_MIN} anos ou mais. Para
-            participantes mais novos, a inscrição é tratada diretamente pela organização pelo
-            e-mail{' '}
-            <a href={`mailto:${ORGANIZATION_EMAIL}`} className={CTA_TERTIARY}>
-              {ORGANIZATION_EMAIL}
-            </a>
-            , e nenhum dado é coletado por este site.
+            Para assuntos relacionados à privacidade e aos dados da inscrição, o canal de contato é{' '}
+            <MailLink />.
           </p>
         </Article>
 
-        <Article title="Para que servem" id="finalidade">
+        <Article title="Quais dados coletamos" id="coleta">
+          <p>A inscrição pelo site coleta apenas três informações:</p>
+          <List
+            items={['nome;', 'idade;', 'número de celular.']}
+          />
           <p>
-            Para organizar esta palestra: controlar as vagas, montar a lista de presença e entrar em
-            contato com você pelo celular informado caso algo mude — por exemplo, se uma vaga da
-            lista de espera for liberada.
-          </p>
-          <p>
-            O número de celular também é o que identifica uma inscrição. É por ele que o sistema
-            reconhece quem já está inscrito e evita inscrições duplicadas.
-          </p>
-        </Article>
-
-        <Article title="Quem tem acesso" id="acesso">
-          <p>
-            Apenas os organizadores autorizados, cada um com sua própria conta. A lista de inscritos
-            nunca é pública: não existe contador de inscrições, lista de nomes nem seção “quem vai”
-            em nenhuma página deste site.
-          </p>
-          <p>
-            Toda ação de um organizador sobre os seus dados — corrigir, cancelar, promover da lista
-            de espera, exportar ou apagar — fica registrada com a identificação de quem fez.
+            Durante o uso do formulário, também são processadas informações técnicas estritamente
+            necessárias à segurança do site e à verificação antirrobô. Isso não acrescenta nenhum
+            campo à inscrição: continuam sendo apenas os três dados acima.
           </p>
         </Article>
 
-        <Article title="O que não é feito" id="limites">
-          <ul className="flex list-disc flex-col gap-2 pl-5">
-            <li>Seus dados não são vendidos nem cedidos para fins comerciais.</li>
-            <li>Não há publicidade, rastreamento de perfil nem cookies de marketing neste site.</li>
-            <li>Não enviamos mensagens sobre outros assuntos ou outros eventos.</li>
-          </ul>
+        <Article title="Para que usamos seus dados" id="finalidade">
+          <p>As finalidades são estritamente estas:</p>
+          <List
+            items={[
+              'identificar e administrar a inscrição;',
+              'verificar a elegibilidade etária para a inscrição online;',
+              'controlar capacidade e lista de espera;',
+              'permitir a operação administrativa do evento;',
+              'entrar em contato sobre a inscrição ou sobre informações operacionais do evento, quando necessário;',
+              'proteger o formulário e o sistema contra fraude, abuso e inscrições automatizadas.',
+            ]}
+          />
+          <p className="text-text-primary">
+            Não vendemos os dados dos participantes e não utilizamos os dados da inscrição para
+            publicidade ou marketing.
+          </p>
         </Article>
 
-        <Article title="Correção e exclusão" id="direitos">
+        <Article title="Com quem os dados podem ser compartilhados" id="compartilhamento">
+          <p>O acesso aos dados da inscrição é limitado a:</p>
+          <List
+            items={[
+              'pessoas autorizadas da organização do evento;',
+              'fornecedores de infraestrutura, hospedagem, banco de dados, autenticação e segurança estritamente necessários para operar o serviço.',
+            ]}
+          />
           <p>
-            Você pode pedir a correção ou a exclusão da sua inscrição a qualquer momento pelo
-            e-mail{' '}
-            <a href={`mailto:${ORGANIZATION_EMAIL}`} className={CTA_TERTIARY}>
-              {ORGANIZATION_EMAIL}
-            </a>
-            .
+            Esses fornecedores são utilizados apenas na medida necessária para fornecer e proteger o
+            serviço.
+          </p>
+        </Article>
+
+        <Article title="Adolescentes" id="adolescentes">
+          <p>A inscrição online é destinada a pessoas com {PUBLIC_AGE_MIN} anos ou mais.</p>
+          <p>
+            A partir dos {PUBLIC_AGE_MIN} anos, adolescentes podem utilizar o fluxo normal de
+            inscrição.
           </p>
           <p>
-            Para proteger quem já está inscrito, reenviar o formulário com o mesmo número não altera
-            os dados guardados: a correção passa sempre por uma pessoa da organização.
+            Para pessoas com menos de {PUBLIC_AGE_MIN} anos, o formulário online não deve ser
+            utilizado. O responsável deve entrar em contato pelo e-mail <MailLink />.
           </p>
+          <p>
+            Dados que envolvam crianças e adolescentes são tratados com atenção especial à
+            privacidade, à necessidade e ao melhor interesse da pessoa.
+          </p>
+        </Article>
+
+        <Article title="Por quanto tempo guardamos os dados" id="retencao">
+          <p>
+            Os dados pessoais da inscrição serão mantidos por até 30 dias após a realização do
+            evento. Após esse período, serão excluídos ou anonimizados, salvo quando a conservação
+            for necessária para cumprimento de obrigação legal ou para o exercício e defesa de
+            direitos.
+          </p>
+        </Article>
+
+        <Article title="Seus direitos" id="direitos">
+          <p>Quando aplicável, você pode solicitar:</p>
+          <List
+            items={[
+              'confirmação da existência de tratamento;',
+              'acesso aos seus dados;',
+              'correção de dados incompletos, inexatos ou desatualizados;',
+              'informações sobre o uso e o compartilhamento dos dados;',
+              'exclusão dos dados, quando cabível.',
+            ]}
+          />
+          <p>
+            Os pedidos devem ser enviados para <MailLink />.
+          </p>
+        </Article>
+
+        <Article title="Segurança" id="seguranca">
+          <p>
+            O acesso administrativo é restrito a pessoas autorizadas, cada uma com sua própria conta,
+            e adotamos medidas técnicas e organizacionais para reduzir riscos de acesso não
+            autorizado, perda, alteração ou uso indevido dos dados. Nenhum sistema é absolutamente
+            seguro, e por isso essas medidas são revisadas conforme necessário.
+          </p>
+        </Article>
+
+        <Article title="Atualizações deste aviso" id="atualizacoes">
+          <p>
+            Este aviso pode ser atualizado quando necessário. A versão vigente é sempre a publicada
+            nesta página.
+          </p>
+          <p className="text-text-muted">Última atualização: {LAST_UPDATED}.</p>
         </Article>
 
         <p className="text-body">
@@ -167,6 +187,25 @@ export default function PrivacyNotice() {
   );
 }
 
+/** The one published contact channel, written once so it can never disagree with itself. */
+function MailLink() {
+  return (
+    <a href={`mailto:${ORGANIZATION_EMAIL}`} className={CTA_TERTIARY}>
+      {ORGANIZATION_EMAIL}
+    </a>
+  );
+}
+
+function List({ items }: { readonly items: readonly string[] }) {
+  return (
+    <ul className="flex list-disc flex-col gap-2 pl-5">
+      {items.map((item) => (
+        <li key={item}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
 function Article({
   title,
   id,
@@ -177,7 +216,10 @@ function Article({
   children: React.ReactNode;
 }) {
   return (
-    <section aria-labelledby={`${id}-titulo`} className="flex flex-col gap-3 border-t border-ink-600 pt-8">
+    <section
+      aria-labelledby={`${id}-titulo`}
+      className="flex flex-col gap-3 border-t border-ink-600 pt-8"
+    >
       <h2 id={`${id}-titulo`} className="text-h3 text-text-primary">
         {title}
       </h2>
