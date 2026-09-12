@@ -8,7 +8,13 @@
  *
  *   * the document never grows wider than the viewport, at any specified width;
  *   * the sticky CTA is a mobile affordance that yields to the form;
- *   * reduced motion delivers the whole page immediately, with the chart drawn;
+ *   * reduced motion delivers the whole page immediately, with both the chart and the journey drawn;
+ *   * the Financial Journey Line (VISUAL-DIRECTION.md section 10.8) is decorative in the way that
+ *     word has to mean here — silent to assistive technology, untouchable by a pointer — and it
+ *     rebuilds its geometry rather than keeping a stale shape after a resize;
+ *   * the counting rail (section 7.4) keeps the two proportions its composition rests on — its base
+ *     one rail gap above that line, and every bead clear of the date lockup — at every desktop
+ *     width, and is absent below `lg` rather than shrunk into the type;
  *   * nothing is hidden behind JavaScript;
  *   * pressing submit does not move the submit button out from under the pointer.
  *
@@ -134,6 +140,79 @@ test.describe('with prefers-reduced-motion', () => {
     expect(chart.dasharray).toBe('none');
     expect(Number.parseFloat(chart.dashoffset)).toBe(0);
 
+    /*
+     * And so does the journey (section 10.8). Reduced motion is a different program rather than a
+     * faster one: the line is present and complete from the first frame, so it is never scrubbed by
+     * scroll and never caught part-drawn. A dash pattern surviving here would mean the controller
+     * had attached its listener after all.
+     */
+    const journey = await page.locator('.u-journey-line').evaluateAll((paths) =>
+      paths.map((path) => {
+        const style = getComputedStyle(path);
+        return {
+          drawn: (path.getAttribute('d') ?? '').length > 0,
+          dasharray: style.strokeDasharray,
+          dashoffset: Number.parseFloat(style.strokeDashoffset),
+        };
+      }),
+    );
+    expect(journey.length).toBeGreaterThan(0);
+    expect(journey.every((line) => line.drawn)).toBe(true);
+    expect(journey.map((line) => line.dasharray)).toEqual(journey.map(() => 'none'));
+    expect(journey.map((line) => line.dashoffset)).toEqual(journey.map(() => 0));
+
+    // The single ring is not played quickly; it is not played at all.
+    const ring = await page
+      .locator('[data-journey-ring] .u-journey-dot')
+      .first()
+      .evaluate((dot) => getComputedStyle(dot, '::after').content);
+    expect(ring).toBe('none');
+
+    /*
+     * The counting rail is present and finished too (section 7.4): no animation left running, and
+     * the two bead movements already made rather than skipped — under reduced motion the controller
+     * reports every cue reached, so what renders is the composition after both counts.
+     */
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const rail = await page.evaluate(() => {
+      const art = document.querySelector('.u-rail-art')!;
+      const running = [...document.querySelectorAll('.u-rail-frame, .u-rail-wire, .u-rail-enter')]
+        .map((element) => getComputedStyle(element).animationName)
+        .filter((name) => name !== 'none');
+      return {
+        running,
+        tilted: getComputedStyle(art).transform.startsWith('matrix3d'),
+        shifted: [...document.querySelectorAll('.u-rail-shift')].map(
+          (element) => getComputedStyle(element).transform,
+        ),
+      };
+    });
+    expect(rail.running, 'the counting rail was still animating').toEqual([]);
+
+    /*
+     * And the head does not exist at all: there is no drawn tip to concentrate energy at, because
+     * the line is simply complete. Nor does the scrub: the object stays at the pose it was drawn in.
+     */
+    const kinetic = await page.evaluate(() => ({
+      heads: [...document.querySelectorAll('.u-journey-head, .u-journey-tail')].map(
+        (element) => getComputedStyle(element).display,
+      ),
+      live: document.querySelectorAll('[data-journey-live]').length,
+      progress: document
+        .querySelector<HTMLElement>('[data-counting-rail]')!
+        .style.getPropertyValue('--rail-progress'),
+      facts: getComputedStyle(document.querySelector('#detalhes-titulo')!.parentElement!).opacity,
+    }));
+    expect(kinetic.heads.every((display) => display === 'none')).toBe(true);
+    expect(kinetic.live).toBe(0);
+    expect(kinetic.progress).toBe('');
+    expect(kinetic.facts, 'the facts were waiting for a line that never moves').toBe('1');
+    // The static perspective is drawing, not motion, and stays.
+    expect(rail.tilted).toBe(true);
+    expect(rail.shifted.every((transform) => transform !== 'none')).toBe(true);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+
     // Sections below the fold are readable without having been scrolled to.
     await expect(page.locator('#detalhes-titulo')).toHaveCSS('opacity', '1');
 
@@ -142,6 +221,313 @@ test.describe('with prefers-reduced-motion', () => {
       .locator('#hero-cta')
       .evaluate((element) => getComputedStyle(element).transitionProperty);
     expect(settle).not.toBe('none');
+  });
+});
+
+test.describe('the Financial Journey Line', () => {
+  /**
+   * The line is decoration, and decoration on this page has two hard obligations: it says nothing to
+   * a screen reader, and it can never come between a finger and a control. The points are the risk
+   * worth a test — they are absolutely positioned spans, which paint *above* their section's in-flow
+   * content, so one of them left hit-testable would sit over the form.
+   */
+  test('says nothing, catches nothing, and focuses nothing', async ({ page }) => {
+    await page.goto('/');
+
+    const decorations = page.locator('[data-journey-segment], [data-journey-point]');
+    expect(await decorations.count()).toBeGreaterThan(0);
+
+    for (const decoration of await decorations.all()) {
+      await expect(decoration).toHaveAttribute('aria-hidden', 'true');
+      await expect(decoration).toHaveCSS('pointer-events', 'none');
+    }
+
+    // No focusable SVG: `focusable="false"` on every canvas, and nothing in the tab order.
+    const canvases = await page.locator('[data-journey-segment]').evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        focusable: node.getAttribute('focusable'),
+        tabindex: node.getAttribute('tabindex'),
+      })),
+    );
+    expect(canvases.every((canvas) => canvas.focusable === 'false')).toBe(true);
+    expect(canvases.every((canvas) => canvas.tabindex === null)).toBe(true);
+  });
+
+  /**
+   * The geometry is measured from the page's own layout, which means a resize invalidates it. A line
+   * that kept its old shape would be pinned to where the poster and the form panel used to be —
+   * which is the defect this architecture is most exposed to, and therefore the one worth pinning.
+   */
+  test('redraws its geometry after a resize, and completes by the foot of the page', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+
+    const shapes = () =>
+      page
+        .locator('.u-journey-line')
+        .evaluateAll((paths) => paths.map((path) => path.getAttribute('d') ?? ''));
+
+    // Scrolled to the foot, every segment is drawn to its end: the journey resolves rather than
+    // stopping somewhere in the middle of the page.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect
+      .poll(() =>
+        page
+          .locator('.u-journey-line')
+          .evaluateAll((paths) =>
+            paths.every((path) => Number.parseFloat(getComputedStyle(path).strokeDashoffset) === 0),
+          ),
+      )
+      .toBe(true);
+
+    const wide = await shapes();
+    expect(wide.every((d) => d.startsWith('M'))).toBe(true);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(async () => (await shapes()).join('|') !== wide.join('|')).toBe(true);
+
+    // And the narrow composition is a real path too, not an empty attribute left behind.
+    const narrow = await shapes();
+    expect(narrow.every((d) => d.startsWith('M'))).toBe(true);
+  });
+});
+
+test.describe('the counting rail', () => {
+  /**
+   * The object's one structural claim (VISUAL-DIRECTION.md section 7.4): its base rail sits exactly
+   * one rail gap above the journey line's run through the hero, so the line reads as the rail the
+   * composition is missing and the date as the value counted onto it.
+   *
+   * That relationship is arithmetic in the stylesheet — `19%` of the header, plus 19% of the
+   * lockup's own box, plus a tenth of the object's width — and it is the first thing that breaks
+   * when the lockup is resized or the object is moved. Measured here at every desktop width rather
+   * than asserted once, because it is a proportion and not a number.
+   */
+  test('stands one rail gap above the journey line, at every desktop width', async ({ page }) => {
+    await page.goto('/');
+
+    for (const width of [1024, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+
+      const measured = await page.evaluate(() => {
+        const rail = document.querySelector('[data-counting-rail]')!.getBoundingClientRect();
+        // The first node down the page is the hero's: the date lockup's own baseline.
+        const node = document.querySelector('[data-journey-node]')!.getBoundingClientRect();
+        return { gap: node.top + node.height / 2 - rail.bottom, width: rail.width };
+      });
+
+      // One rail gap is 90 of the drawing's 900 units — a tenth of whatever the object is wide.
+      expect(Math.abs(measured.gap - measured.width * 0.1), `gap is wrong at ${width}px`).toBeLessThan(2);
+    }
+  });
+
+  /**
+   * The second claim, and the reason the base rail carries no beads at all: the `19SET` lockup
+   * reaches up into that row, and a bead printed half-behind a glyph reads as a mistake. The gold
+   * bead one rail above it is the closest thing to the date and has to stay clear of it.
+   */
+  test('never puts a bead behind the date lockup', async ({ page }) => {
+    await page.goto('/');
+
+    for (const width of [1024, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+
+      const clearance = await page.evaluate(() => {
+        const beads = [...document.querySelectorAll('.u-rail-bead, .u-rail-bead-gold')].map((bead) =>
+          bead.getBoundingClientRect(),
+        );
+        const lockup = document.querySelector('.u-date-lockup')!.getBoundingClientRect();
+        // Only the beads low enough to meet the lockup's cap height can collide with it.
+        const low = beads.filter((bead) => bead.bottom > lockup.top);
+        return low.length === 0 ? Infinity : Math.min(...low.map((bead) => lockup.left - bead.right));
+      });
+
+      expect(clearance, `a bead reaches the lockup at ${width}px`).toBeGreaterThan(0);
+    }
+  });
+
+  test('is decorative, silent and untouchable, and does not exist below lg', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+
+    const svg = page.locator('.u-rail-art');
+    await expect(svg).toHaveAttribute('aria-hidden', 'true');
+    await expect(svg).toHaveAttribute('focusable', 'false');
+    await expect(svg).toHaveCSS('pointer-events', 'none');
+
+    // It says nothing: no text, and therefore nothing in the accessibility tree to hear.
+    expect(await svg.evaluate((element) => element.textContent?.trim() ?? '')).toBe('');
+
+    /*
+     * Below `lg` the hero has no right-hand region and the object is not rendered — `display: none`,
+     * so its two journey cues take themselves out of the controller's measurement as well. A cue
+     * left in a hidden subtree would be measured at the origin and fire on the first frame.
+     *
+     * Loaded at that width rather than resized into it: the question is what a phone-sized visit
+     * does, and an attribute left behind by a wider layout says nothing about it either way.
+     */
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto('/');
+
+    await expect(page.locator('[data-counting-rail]')).toBeHidden();
+
+    // Its own two cues, not the page's — Detalhes and Inscrição have cues of their own at every
+    // width, and they are supposed to be measured.
+    const cues = await page
+      .locator("[data-journey-cue='a'], [data-journey-cue='b']")
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-reached')));
+    expect(cues.length).toBeGreaterThan(0);
+    expect(cues, 'a cue was measured inside a hidden subtree').toEqual(cues.map(() => null));
+  });
+});
+
+test.describe('the choreography', () => {
+  /**
+   * The fusion (VISUAL-DIRECTION.md section 7.4): the line becomes collinear with the rail carrying
+   * the second gold bead, briefly, and then leaves.
+   *
+   * Two properties are worth pinning and neither is a pixel: the run is *level with that rail* — the
+   * whole point, and the thing a change of typography used to break — and it is *short*, because a
+   * line that becomes the whole rail stops being a coincidence and starts being a replacement.
+   */
+  test('merges with one rail of the object, briefly, at every desktop width', async ({ page }) => {
+    await page.goto('/');
+
+    for (const width of [1024, 1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 900 });
+
+      const fusion = await page.evaluate(() => {
+        const rail = document.querySelector('[data-counting-rail]')!.getBoundingClientRect();
+        // Authored order: the lead-in, then the two ends of the fused run.
+        const [, from, to] = [
+          ...document.querySelectorAll('[data-counting-rail] [data-journey-point]'),
+        ].map((point) => point.getBoundingClientRect());
+        return {
+          level: Math.abs(from.top - to.top),
+          // The rail it should be level with: the fourth of five, in the drawing's own proportions.
+          offRail: Math.abs(from.top - (rail.top + (358 / 448) * rail.height)),
+          share: (to.left - from.left) / rail.width,
+        };
+      });
+
+      expect(fusion.level, `the run is not horizontal at ${width}px`).toBeLessThan(1.5);
+      expect(fusion.offRail, `the run is not on the rail at ${width}px`).toBeLessThan(2.5);
+      expect(fusion.share, `the run is too long at ${width}px`).toBeLessThan(0.32);
+      expect(fusion.share, `the run is too short at ${width}px`).toBeGreaterThan(0.08);
+    }
+  });
+
+  /**
+   * The scrub (section 7.4): the hero's scroll position drives the bead groups continuously, in both
+   * directions, and reverses when the reader does. Driven with a real wheel rather than
+   * `scrollTo`, because the controller answers to the scroll *event* and a programmatic jump in a
+   * headless browser does not always produce one.
+   */
+  test('scrubs the beads with the scroll, both ways, and returns', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+
+    const state = () =>
+      page.evaluate(() => ({
+        progress: Number.parseFloat(
+          document.querySelector<HTMLElement>('[data-counting-rail]')!.style.getPropertyValue(
+            '--rail-progress',
+          ) || '0',
+        ),
+        offsets: [...document.querySelectorAll('.u-rail-scrub')].map((group) => {
+          const matrix = new DOMMatrixReadOnly(getComputedStyle(group).transform);
+          return Math.round(matrix.m41);
+        }),
+      }));
+
+    const rest = await state();
+    expect(rest.progress).toBe(0);
+
+    for (let i = 0; i < 6; i += 1) {
+      await page.mouse.wheel(0, 50);
+      await page.waitForTimeout(40);
+    }
+    await expect.poll(async () => (await state()).progress).toBeGreaterThan(0.3);
+
+    const moved = await state();
+    // A hierarchy, not a setting: some groups travel far, one of them against the others, and the
+    // quietest barely move at all.
+    expect(Math.max(...moved.offsets), 'no group travelled right').toBeGreaterThan(4);
+    expect(Math.min(...moved.offsets), 'no group travelled left').toBeLessThan(-20);
+
+    for (let i = 0; i < 8; i += 1) {
+      await page.mouse.wheel(0, -50);
+      await page.waitForTimeout(40);
+    }
+    // All the way back, not nearly: the convergence tail is allowed a few frames to land on zero.
+    await expect.poll(async () => (await state()).progress).toBe(0);
+
+    const returned = await state();
+    expect(returned.offsets, 'the beads did not return').toEqual(rest.offsets);
+  });
+
+  /**
+   * The head (section 10.9). Exactly one segment carries it — the one the drawn tip is inside — and
+   * it is positioned from the stroke itself rather than from an approximation of it.
+   */
+  test('carries one head, on the segment being drawn', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+
+    // Past the opening draw, when the head is deliberately absent.
+    await page.mouse.wheel(0, 40);
+    await expect.poll(() => page.locator('[data-journey-live]').count()).toBe(1);
+
+    // The head is deliberately absent during the opening draw and fades in over 320ms after it.
+    await expect
+      .poll(() =>
+        page
+          .locator('[data-journey-live] .u-journey-head')
+          .evaluate((marker) => Number.parseFloat(getComputedStyle(marker).opacity)),
+      )
+      .toBeGreaterThan(0.9);
+
+    const head = await page.evaluate(() => {
+      const live = document.querySelector('[data-journey-live]')!;
+      const marker = live.querySelector('.u-journey-head')!;
+      const line = live.querySelector<SVGPathElement>('.u-journey-line')!;
+      const transform = marker.getAttribute('transform') ?? '';
+      const [x, y] = (/translate\(([-\d.]+) ([-\d.]+)\)/.exec(transform) ?? []).slice(1).map(Number);
+      // The point the controller placed it at has to be *on* the path it is the end of.
+      let nearest = Infinity;
+      for (let at = 0; at <= line.getTotalLength(); at += 4) {
+        const point = line.getPointAtLength(at);
+        nearest = Math.min(nearest, Math.hypot(point.x - x, point.y - y));
+      }
+      return { placed: Number.isFinite(x), nearest, opacity: getComputedStyle(marker).opacity };
+    });
+
+    expect(head.placed).toBe(true);
+    expect(head.nearest, 'the head is not on the line').toBeLessThan(3);
+  });
+
+  /**
+   * Detalhes (section 10.9): the facts resolve because the line arrived. The property that matters
+   * is the additive one — the hidden state may only exist while the journey is actually running, so
+   * a page without it is a page with its facts on show.
+   */
+  test('resolves the facts when the line reaches them, and shows them when it cannot', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+
+    const opacity = () =>
+      page.locator('#detalhes-titulo').evaluate((el) => getComputedStyle(el.parentElement!).opacity);
+
+    // Before the line gets there: held back, but only because the controller is running.
+    await expect(page.locator('html')).toHaveAttribute('data-journey', 'on');
+    expect(Number.parseFloat(await opacity())).toBeLessThan(0.2);
+
+    await page.locator('#detalhes-titulo').scrollIntoViewIfNeeded();
+    await expect.poll(async () => Number.parseFloat(await opacity())).toBe(1);
   });
 });
 

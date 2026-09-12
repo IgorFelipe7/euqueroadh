@@ -136,6 +136,46 @@
 }
 
 /*
+ * The counting rail's two pointer properties (section 7.4), registered so they are typed, animatable
+ * and — the reason it matters here — defined as `0` before any script runs. The object's resting
+ * composition is therefore the one the page is designed as, and `RailPointer` only ever perturbs it.
+ */
+@property --rail-x {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+@property --rail-y {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+/*
+ * The counting rail's scroll position, 0 to 1 across the object's own height (section 7.4). Written
+ * once per frame by the page's one controller and read by every bead group at a different amplitude.
+ * Registered for the same reason as the two above: it has to be a number `calc()` can multiply, and
+ * it has to be `0` before a line of script has run.
+ */
+@property --rail-progress {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+/*
+ * How hard the reader is scrolling, 0 to 1, decayed each frame and written only on the segment the
+ * drawn tip is inside (section 10.9). It lengthens the bright run at the tip and nothing else: the
+ * line's own weight and colour never move, so speed reads as energy rather than as a second style.
+ */
+@property --journey-energy {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+/*
  * Spacing uses Tailwind's 4px base unchanged, because the scale in section 4.1
  * (4 · 8 · 12 · 16 · 24 · 32 · 48 · 64 · 96 · 128 · 160) maps exactly onto the default steps
  * 1 · 2 · 3 · 4 · 6 · 8 · 12 · 16 · 24 · 32 · 40. Steps outside that list are a review failure,
@@ -155,11 +195,64 @@
      */
     --sticky-cta-height: calc(76px + env(safe-area-inset-bottom, 0px));
     scroll-padding-bottom: var(--sticky-cta-height);
+
+    /*
+     * The Financial Journey Line's shape, declared where the rest of the composition is declared
+     * (section 10.8). The controller reads these two numbers once per measurement.
+     *
+     * `--journey-swing` is the lateral throw of an intermediate vertex and `--journey-step` the
+     * distance between them. Below `lg` the page is a single column of copy and the line runs in
+     * the gutter, so the swing is smaller than the gutter itself — a wider one would put a stroke
+     * through the first characters of every paragraph.
+     */
+    --journey-swing: 5px;
+    --journey-step: 190px;
+    --journey-ink: 0.4;
+    --journey-weight: 1.5px;
+
+    /*
+     * The date lockup's size, hoisted out of `.u-date-lockup` because two elements now depend on it.
+     * The counting rail's base is aligned to the journey line's run through the hero, and that run
+     * sits on the lockup's own baseline — 19% up its box, which is 0.85em tall. A rail positioned
+     * from a number typed twice is a rail that drifts the first time the lockup is resized; from
+     * one token it cannot (section 7.4).
+     */
+    --date-size: clamp(4rem, 32vw, 11rem);
   }
 
   @media (width >= 48rem) {
     :root {
       --sticky-cta-height: 0px;
+      --date-size: clamp(4.5rem, 13vw, 6.5rem);
+    }
+  }
+
+  @media (width >= 64rem) {
+    :root {
+      /* The asymmetric composition opens up: an empty column, a real gutter and the space between
+         the two grid halves are all room the line can use. */
+      --journey-swing: 34px;
+      --journey-step: 260px;
+      --journey-ink: 0.36;
+      --journey-weight: 2px;
+
+      --date-size: clamp(6rem, 11vw, 11rem);
+
+      /*
+       * The counting rail's width, and with it everything about the object: the drawing is 900 units
+       * wide, so one user unit is `--rail-w / 900` and every proportion below is expressed that way.
+       *
+       * It is sized so its left stile clears the type stack at every width from 1024px up, and so
+       * roughly a tenth of it is carried past the right edge of the frame — the same crop the date
+       * lockup takes, for the same reason (section 1.9).
+       *
+       * 42vw is a measured ceiling rather than a taste. The object's height is 0.6 of its width once
+       * the gap below it is counted, and at 1024px — where `Financeira` is capped at 7.5rem and so
+       * occupies a *larger* share of the frame than at 1440px — anything wider drives the crown up
+       * into the display line. Anything much narrower does the opposite damage: the object stops
+       * being wider than the lockup beneath it, and the beads nearest the date end up behind it.
+       */
+      --rail-w: min(42vw, 700px);
     }
   }
 
@@ -291,13 +384,21 @@
   }
 
   @media (width >= 64rem) {
+    /*
+     * On the asymmetric hero the motif moves off the right half and settles under the type stack and
+     * the CTA instead. Two chart-like things in the same corner is mush, and from section 7.4 that
+     * corner now holds the counting rail: the motif is the weather the page happens in, the rail is
+     * an object in it, and they cannot occupy the same air. The glow is untouched and still falls on
+     * the right, so the object and the date are lit by the page's one light source (section 1.2) —
+     * what has moved is texture, not light.
+     */
     .u-chart-field {
       height: min(78%, 560px);
       mask-image: radial-gradient(
-        ellipse 62% 110% at 70% 78%,
+        ellipse 44% 110% at 30% 86%,
         #000 0%,
-        color-mix(in srgb, #000 55%, transparent) 58%,
-        color-mix(in srgb, #000 20%, transparent) 100%
+        color-mix(in srgb, #000 48%, transparent) 56%,
+        transparent 100%
       );
     }
   }
@@ -315,22 +416,191 @@
   .u-date-lockup {
     display: flex;
     align-items: baseline;
-    font-size: clamp(4rem, 30vw, 7rem);
+    /*
+     * `--date-size` is 32vw with an 11rem ceiling on a phone, so the lockup is wider than the screen
+     * it is on and the frame actually cuts it. At 30vw/7rem the ceiling bound at every width above
+     * 373px, which left the `T` finishing a few pixels short of the edge — a lockup that *just fits*
+     * reads as a near miss rather than as the deliberate crop sections 1.9 and 5.2 both ask for.
+     *
+     * The per-breakpoint values live with the other layout tokens, because the counting rail is
+     * positioned from them too (section 7.4) and the two must not be able to disagree.
+     */
+    font-size: var(--date-size);
     line-height: 0.85;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
   }
 
-  @media (width >= 48rem) {
-    .u-date-lockup {
-      font-size: clamp(4.5rem, 13vw, 6.5rem);
+  /* ----------------------------------------------------------------------------------------------
+   * The counting rail — section 7.4. The drawing is in components/site/counting-rail.tsx; this is
+   * where it is placed, lit and moved.
+   * -------------------------------------------------------------------------------------------- */
+
+  .u-rail {
+    position: absolute;
+    right: 0;
+    /*
+     * Above the journey line, below the date (section 7.4). Both this and the hero's line segment
+     * sit at `z-index: 0`, so tree order decides — and the object comes after. That is what makes
+     * the fused run read as the rail brightening rather than as a stroke ruled across the beads.
+     */
+    z-index: 0;
+    width: var(--rail-w);
+    /* Matches the drawing's own 900 x 448, so `meet` fits it exactly and nothing is letterboxed. */
+    aspect-ratio: 900 / 448;
+    /*
+     * The whole reason the object reads as belonging to the page rather than as sitting on it.
+     *
+     * `19%` is the lockup wrapper's own bottom edge; `0.1615 x --date-size` is 19% of the lockup's
+     * 0.85em box, which is where its baseline — and with it the journey line's run through the hero
+     * — actually lands; `0.1 x --rail-w` is exactly one rail gap of this drawing. So the object's
+     * lowest rail sits one gap above the line, the line reads as the rail the composition is
+     * missing, and the date stands on it as the value counted onto it.
+     */
+    bottom: calc(19% + 0.1615 * var(--date-size) + 0.1 * var(--rail-w));
+    /* Carried past the frame, like the lockup beneath it and for the same reason (section 1.9). */
+    translate: 8% 0;
+    pointer-events: none;
+  }
+
+  /*
+   * The cues are heights, not marks. Both sit well below the object — the first a little under the
+   * hero's foot, the second inside the section after it — so neither can already be reached on the
+   * frame the page arrives, which would fire a bead movement into the middle of the entrance.
+   */
+  .u-rail-cue-a {
+    top: calc(100% + 26vh);
+  }
+
+  .u-rail-cue-b {
+    top: calc(100% + 62vh);
+  }
+
+  .u-rail-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    /*
+     * The rails run out past the drawing and the base rail's beads hang below it. Both are cut by
+     * the hero's own `overflow-clip` — the frame this composition is composed against — which is
+     * also why neither can widen the document (section 11.2).
+     */
+    overflow: visible;
+    /*
+     * A few degrees of perspective, pivoted on the bottom-left corner: the one point that has to
+     * stay exactly where it is, because it is where the object's rhythm meets the line's. Rotation
+     * is all of it — no scale, no float, no shadow, nothing that would make it a product shot.
+     */
+    transform-origin: 0 100%;
+    transform: perspective(1900px) rotateY(calc(9deg + var(--rail-x) * -2.2deg))
+      rotateX(calc(var(--rail-y) * -1.3deg));
+    /* Damping, not following. The object arrives where the pointer went a moment ago. */
+    transition: transform 520ms var(--ease-settle);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    /* One promoted layer, and only where something can actually move it. */
+    .u-rail-art {
+      will-change: transform;
     }
   }
 
-  @media (width >= 64rem) {
-    .u-date-lockup {
-      font-size: clamp(6rem, 11vw, 11rem);
-    }
+  /*
+   * The rails are hairlines at the journey line's own colour, one step quieter. That is deliberate:
+   * when the line runs in below the object they have to read as the same family of wire, or the
+   * alignment above is a coincidence rather than a composition.
+   */
+  .u-rail-wires {
+    opacity: 0.34;
+  }
+
+  .u-rail-wire {
+    stroke: var(--color-sky-300);
+    stroke-width: 1.6;
+  }
+
+  /*
+   * Mixed toward the page's own ground rather than set at the flat token. `blue-500` straight out of
+   * the palette is the pill's colour and reads as plastic at bead size; a quarter of `ink-900` in it
+   * gives the matte, slightly dusty navy the reference object is made of, without inventing a
+   * fourth blue (section 3.3) — derived, exactly as `gold-300` and `border-hover` are.
+   */
+  .u-rail-bead {
+    color: color-mix(in srgb, var(--color-blue-500) 74%, var(--color-ink-900));
+  }
+
+  /*
+   * The two gold beads. Section 3.4 caps gold at the two buttons and the word `Gratuita`; this is
+   * the documented fourth use and its last (section 7.4). They are one bead wide — 38 of the
+   * drawing's 900 units — they are the only warm thing above the fold, and there are exactly two.
+   */
+  .u-rail-bead-gold {
+    /* Deepened the same way, and for a second reason: at full strength two gold discs above the fold
+       compete with the one gold button the page exists for. */
+    color: color-mix(in srgb, var(--color-gold-400) 86%, var(--color-blue-600));
+  }
+
+  /*
+   * Pointer drift. Beads move *along their rail* and never across it — the one direction an actual
+   * bead can travel — by a few units scaled by how near the group is meant to read. The tilt above
+   * and this are the entire pointer response.
+   */
+  .u-rail-drift {
+    transform: translateX(calc(var(--rail-x) * var(--rail-depth, 0.5) * 14px));
+    transition: transform 520ms var(--ease-settle);
+  }
+
+  /*
+   * The scrub — section 7.4. The whole object answers to the hero's scroll position continuously and
+   * reversibly: `--rail-progress` runs 0 to 1 across the object's own height, and each group
+   * multiplies it by its own signed amplitude. Three groups carry the movement, one of them
+   * travelling right against the others; the rest, and both gold beads, barely answer at all.
+   *
+   * **No transition here on purpose.** The smoothing happens once, in the controller, on the value
+   * itself — a CSS transition against a target that changes every frame queues and lags instead of
+   * damping, and would put the beads behind the reader's thumb.
+   */
+  .u-rail-scrub {
+    transform: translateX(calc(var(--rail-progress) * var(--rail-swing, 0px)));
+  }
+
+  /*
+   * The two accents, on top of the scrub. Each group slides a little further left, once, as the
+   * drawn tip passes its cue: a value landing rather than a decoration being jostled.
+   */
+  .u-rail-shift {
+    transition: transform 900ms var(--ease-rise);
+  }
+
+  [data-journey-cue='a'][data-reached='true'] ~ .u-rail-art .u-rail-shift-a,
+  [data-journey-cue='b'][data-reached='true'] ~ .u-rail-art .u-rail-shift-b {
+    transform: translateX(var(--rail-shift, 0px));
+  }
+
+  /*
+   * The entrance, in three movements and one sequence: the frame settles, the rails extend out of
+   * the stile, and the bead groups arrive from the right — always from the right, because a bead
+   * that travels left is being counted and one that travels right is being cleared. The second gold
+   * bead is the last beat, and it lands on the rail above the date's shoulder at about 1.9s.
+   *
+   * The delays are what keep section 10.4's cap: the three movements overlap by design but never
+   * put more than seven elements in flight at once, and every one of them animates `transform` and
+   * `opacity` only, inside a single composited SVG.
+   *
+   * Pure CSS, no observer, no island: the object is above the fold by definition.
+   */
+  .u-rail-frame {
+    animation: u-rail-arrive 620ms var(--ease-rise) 220ms both;
+  }
+
+  .u-rail-wire {
+    transform-box: fill-box;
+    transform-origin: left center;
+    animation: u-rail-extend 560ms var(--ease-rise) calc(260ms + var(--rail-step) * 60ms) both;
+  }
+
+  .u-rail-enter {
+    animation: u-rail-place 580ms var(--ease-rise) calc(620ms + var(--rail-step) * 95ms) both;
   }
 
   /*
@@ -411,6 +681,216 @@
   }
 
   /*
+   * The poster's arrival — section 10.8. The one piece of choreography on the page that is not the
+   * shared `rise`, because the poster is not a line of type: it is an object, and an object that
+   * slides straight up reads as a slide, while one that also loses a degree and a per cent reads as
+   * having been *placed*.
+   *
+   * Transform and opacity only, on a wrapper that carries no paint of its own. The shadow beneath
+   * it is untouched: animating it would repaint a large blurred area on every frame, which is
+   * precisely the work section 14 bans.
+   */
+  .u-poster-settle {
+    --reveal-from: translateY(34px) rotate(-1.6deg) scale(0.972);
+    --reveal-duration: 620ms;
+  }
+
+  /* ----------------------------------------------------------------------------------------------
+   * The Financial Journey Line — section 10.8. See components/site/journey.tsx for the shape and
+   * financial-journey.tsx for the controller.
+   * -------------------------------------------------------------------------------------------- */
+
+  /*
+   * A section's slice of the line.
+   *
+   * `z-index: -1` inside a section that isolates itself is the entire depth trick: the line paints
+   * above that section's own background fill and below every piece of its content, so the poster,
+   * the form panel and the credits panel occlude it without one explicit z-index between them
+   * (section 7.2). The hero overrides this to `z-0`, where the line belongs above the chart motif
+   * rather than behind it.
+   */
+  .u-journey {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    /* The line is measured from the page's own layout, so it cannot exist before that layout does.
+       It fades in once, on the frame the geometry is first known — never a pop at hydration. */
+    opacity: 0;
+    transition: opacity 520ms var(--ease-settle);
+  }
+
+  [data-journey='on'] .u-journey {
+    opacity: 1;
+  }
+
+  .u-journey-line {
+    fill: none;
+    stroke: var(--color-sky-300);
+    stroke-width: var(--journey-weight);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: var(--journey-ink);
+    /* Both numbers are written by the controller. Undrawn until it says otherwise. */
+    stroke-dasharray: var(--journey-length, 1);
+    stroke-dashoffset: var(--journey-offset, var(--journey-length, 1));
+  }
+
+  /*
+   * The opening draw, and the only moment `stroke-dashoffset` is ever transitioned. From the first
+   * scroll onward the controller owns that number outright, frame by frame — a transition there
+   * would put the line permanently behind the reader.
+   */
+  [data-journey-entrance] .u-journey-line {
+    transition: stroke-dashoffset 1100ms var(--ease-rise);
+  }
+
+  [data-journey-entrance] {
+    --journey-node-delay: 720ms;
+  }
+
+  /*
+   * The head — section 10.9.
+   *
+   * Not a marker travelling along a track: a concentration of energy at the leading end of the
+   * stroke. The tail is the same path shown as one short dash pinned to the tip, and the head is a
+   * soft bloom with a small core sitting exactly on it. Both exist only on the segment the tip is
+   * inside — the controller marks it `data-journey-live` — and both fade rather than pop when the
+   * tip moves on, which is how the line comes to rest on the credits panel without stopping dead.
+   */
+  .u-journey-tail {
+    fill: none;
+    stroke: var(--color-sky-300);
+    /* The same weight as the line it doubles. Energy changes its *length*, never its style. */
+    stroke-width: var(--journey-weight);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0;
+    transition: opacity 320ms var(--ease-settle);
+  }
+
+  .u-journey-head {
+    opacity: 0;
+    transition: opacity 320ms var(--ease-settle);
+  }
+
+  .u-journey-core {
+    fill: var(--color-sky-300);
+    opacity: 0.5;
+  }
+
+  [data-journey-live] .u-journey-tail {
+    opacity: 0.3;
+  }
+
+  [data-journey-live] .u-journey-head {
+    opacity: 1;
+  }
+
+  /*
+   * Never during the opening draw. There the stylesheet owns `stroke-dashoffset` for 1100ms, so the
+   * painted tip is behind the controller's idea of it — a head placed from the controller's number
+   * would sit out ahead of the stroke it is supposed to be the end of. It appears when the reader
+   * takes over, which is also when it starts meaning anything.
+   */
+  [data-journey-entrance] .u-journey-tail,
+  [data-journey-entrance] .u-journey-head {
+    opacity: 0;
+  }
+
+  /*
+   * Detalhes — section 10.9. The facts resolve *because the line arrived*, not because a generic
+   * observer happened to fire 15% into the section.
+   *
+   * Additive exactly as section 10.5 requires: the hidden state exists only under
+   * `[data-journey='on']`, which the controller sets once it has measured a page it can actually
+   * draw. No script, a failed measurement, two points and nothing else — the content is simply
+   * there. Under reduced motion the controller reports every cue reached on its first frame, so what
+   * renders is the finished state, immediately.
+   */
+  [data-journey='on'] .u-arrive {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  [data-journey-cue='detalhes'][data-reached='true'] ~ .u-shell .u-arrive {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 420ms var(--ease-rise) calc(var(--arrive-step, 0) * 70ms),
+      transform 420ms var(--ease-rise) calc(var(--arrive-step, 0) * 70ms);
+  }
+
+  /*
+   * Inscrição — the climax, and it is one gesture (section 10.9). When the line reaches the panel's
+   * shoulder the panel's own edge answers once: a hairline in `sky-300` over the panel's rounding,
+   * dissolving outward. One `::before` on a wrapper the server already renders, so the client island
+   * inside it is untouched, and `opacity` only — section 14's ban on animated shadows stands.
+   */
+  [data-panel-arrival]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--color-sky-300);
+    border-radius: var(--radius-panel);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  [data-journey-cue='inscricao'][data-reached='true'] ~ * [data-panel-arrival]::before {
+    animation: u-arrival 900ms var(--ease-rise) both;
+  }
+
+  /*
+   * A vertex. Zero-sized on purpose: its measured centre is the point the line passes through, so
+   * a node and a plain anchor placed at the same offsets land in exactly the same place.
+   */
+  .u-journey-point {
+    position: absolute;
+    width: 0;
+    height: 0;
+    /* An absolutely positioned span paints above its section's in-flow content, so it is kept out
+       of every hit test explicitly — nothing decorative may ever come between a finger and a
+       field, a label or the challenge widget. */
+    pointer-events: none;
+  }
+
+  .u-journey-dot {
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background-color: var(--color-sky-300);
+    opacity: 0;
+    transform: scale(0.3);
+    transition:
+      opacity 280ms var(--ease-settle) var(--journey-node-delay, 0ms),
+      transform 420ms var(--ease-rise) var(--journey-node-delay, 0ms);
+  }
+
+  [data-reached='true'] > .u-journey-dot {
+    opacity: 0.9;
+    transform: none;
+  }
+
+  /*
+   * One ring, once, at the two ends of the narrative. Section 10.4's ban on looping animation
+   * stands: this plays a single time, when the line arrives, and never again.
+   */
+  [data-journey-ring][data-reached='true'] > .u-journey-dot::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border: 1px solid var(--color-sky-300);
+    border-radius: 9999px;
+    animation: u-journey-ring 820ms var(--ease-rise) var(--journey-node-delay, 0ms) both;
+  }
+
+  /*
    * Depth is layering and occlusion, never a translucent panel (section 7.2). Three planes, named
    * so a later edit cannot invent a fourth: back holds the atmosphere, middle the type, front the
    * two elements that overlap the chart's brightest region.
@@ -467,6 +947,59 @@
   }
 }
 
+@keyframes u-rail-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes u-rail-extend {
+  from {
+    opacity: 0;
+    transform: scaleX(0.18);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes u-rail-place {
+  from {
+    opacity: 0;
+    transform: translateX(var(--rail-travel, 90px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes u-arrival {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes u-journey-ring {
+  from {
+    opacity: 0.45;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
 @keyframes u-fade-in {
   from {
     opacity: 0;
@@ -484,10 +1017,14 @@
    * Ordering note: the display-1 line is deliberately early in the sequence. It is the LCP element
    * (ARCHITECTURE.md section 8.2), and every millisecond it spends at `opacity: 0` is a millisecond
    * added to LCP.
+   *
+   * The step is 50ms rather than 60ms because section 10.8 added a seventh beat — the date lockup
+   * now resolves *last*, as the journey line reaches it — and seven beats at 60ms would push the
+   * sequence past the 700ms ceiling section 10.3 sets.
    */
   .u-rise {
     animation: u-rise 380ms var(--ease-rise) both;
-    animation-delay: calc(var(--rise-step, 0) * 60ms);
+    animation-delay: calc(var(--rise-step, 0) * 50ms);
   }
 
   /*
@@ -497,15 +1034,17 @@
    */
   .js-reveal .u-reveal {
     opacity: 0;
-    transform: translateY(12px);
+    /* One reveal, two shapes. `rise` is the default everywhere; the poster overrides the starting
+       transform and the duration (`.u-poster-settle`) rather than bringing its own machinery. */
+    transform: var(--reveal-from, translateY(12px));
   }
 
   .js-reveal .u-reveal[data-revealed='true'] {
     opacity: 1;
     transform: none;
     transition:
-      opacity 300ms var(--ease-rise),
-      transform 300ms var(--ease-rise);
+      opacity var(--reveal-duration, 300ms) var(--ease-rise),
+      transform var(--reveal-duration, 300ms) var(--ease-rise);
   }
 
   /*
@@ -601,6 +1140,74 @@
 
   /* The outcome is simply there. It was never waiting on the fade. */
   .u-outcome {
+    animation: none;
+  }
+
+  /*
+   * The journey is present and complete rather than absent — the line is part of the composition,
+   * and removing it would change what the page *is* rather than how it arrives (section 10.6). The
+   * controller never attaches its scroll listener in this mode, so nothing here is being overridden
+   * frame by frame: the line is simply drawn, the nodes are simply settled.
+   */
+  .u-journey-line {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+
+  .u-journey-dot {
+    transition: none;
+  }
+
+  /* The one ring on the page goes entirely, rather than becoming a fast ring. */
+  [data-journey-ring][data-reached='true'] > .u-journey-dot::after {
+    content: none;
+    animation: none;
+  }
+
+  /*
+   * The counting rail is present and finished, like the line it stands on (section 7.4). Its
+   * entrance does not run, its tilt is the static one it was drawn at, and the two bead movements
+   * are simply already made — the controller reports every cue reached in this mode, so what is
+   * rendered is the composition after both counts rather than a version of it that never moved.
+   * `RailPointer` never attaches, so nothing can perturb it afterwards.
+   */
+  .u-rail-frame,
+  .u-rail-wire,
+  .u-rail-enter {
+    animation: none;
+  }
+
+  .u-rail-art,
+  .u-rail-drift,
+  .u-rail-shift {
+    transition: none;
+  }
+
+  /* The scrub never runs in this mode, so the object stays at the pose its entrance left it in. */
+  .u-rail-scrub {
+    transform: none;
+  }
+
+  /*
+   * No head and no tail: there is no drawn tip to concentrate energy at, because the line is simply
+   * complete. Removed rather than frozen — a bloom parked mid-page would be an ornament.
+   */
+  .u-journey-tail,
+  .u-journey-head {
+    display: none;
+  }
+
+  /* The facts are simply there, finished, with no transition left to catch them mid-way. */
+  [data-journey='on'] .u-arrive,
+  [data-journey-cue='detalhes'][data-reached='true'] ~ .u-shell .u-arrive {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  /* And the climax is not played quickly; it is not played. */
+  [data-journey-cue='inscricao'][data-reached='true'] ~ * [data-panel-arrival]::before {
     animation: none;
   }
 }

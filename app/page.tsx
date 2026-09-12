@@ -7,9 +7,11 @@
  * the form, the credits — and no two sections share the same padding, width or surface, which is
  * what section 4.2 means by rhythm.
  *
- * A Server Component, and it stays one. The client islands are exactly the three listed in
- * ARCHITECTURE.md section 5 — the form, the sticky CTA and the reveal observer — so every fact on
- * this page costs the browser no JavaScript at all.
+ * A Server Component, and it stays one. The client islands are exactly the five listed in
+ * ARCHITECTURE.md section 5 — the form, the sticky CTA, the reveal observer, the journey controller
+ * and the counting rail's pointer — so every *fact* on this page costs the browser no JavaScript at
+ * all. The last three exist for motion and are additive to the last byte: none of them renders
+ * anything, and with scripting off the page is complete without them.
  *
  * **The state shown here is advisory** (PRODUCT-SPEC.md section 4.4). It is read at render time and
  * served from a 60-second cache, so a visitor can arrive from a stale copy and still be waitlisted
@@ -20,9 +22,12 @@ import type { Metadata } from 'next';
 
 import { Credits } from '@/components/site/credits';
 import { Details } from '@/components/site/details';
+import { FinancialJourney } from '@/components/site/financial-journey';
 import { Grain } from '@/components/site/grain';
 import { Hero, HERO_CTA_ID } from '@/components/site/hero';
 import { Invitation } from '@/components/site/invitation';
+import { JourneyDefs } from '@/components/site/journey';
+import { RailPointer } from '@/components/site/rail-pointer';
 import { RegistrationSection } from '@/components/site/registration-section';
 import { Reveal } from '@/components/site/reveal';
 import { SiteFooter } from '@/components/site/site-footer';
@@ -134,11 +139,26 @@ export default async function Home() {
       <SiteFooter event={view} />
 
       {/*
-        The two client islands that exist for behaviour rather than for content. Both are additive:
-        with JavaScript off, the reveal never hides anything and the sticky bar simply never
-        appears — the hero CTA and the form are both still there.
+        The four client islands that exist for behaviour rather than for content. All four are
+        additive: with JavaScript off, the reveal never hides anything, the journey line is simply
+        never drawn, the counting rail sits at the composition it was drawn as and the sticky bar
+        never appears — the hero CTA and the form are both still there, and every fact on the page is
+        still printed.
+
+        One clear model between them, and no overlap (VISUAL-DIRECTION.md sections 7.4 and 10.8):
+        the hero's entrance — the type's and the counting rail's alike — is pure CSS and needs no
+        island at all; `Reveal` handles arrival, one observer, once per section; `FinancialJourney`
+        handles progression, one measurement and one frame loop for the single line that crosses the
+        whole page, and the counting rail's two bead movements ride on that same loop rather than
+        bringing a second one; `RailPointer` handles the pointer, on a fine pointer at `lg` only, and
+        writes two numbers. Nothing else animates.
       */}
       <Reveal />
+      <FinancialJourney />
+      <RailPointer />
+
+      {/* The head's bloom, declared once for every segment on the page (section 10.9). */}
+      <JourneyDefs />
       {cta ? (
         <StickyCta label={cta} targetId={REGISTRATION_ANCHOR} heroCtaId={HERO_CTA_ID} />
       ) : null}

@@ -20,6 +20,8 @@ import type { EventPresentation } from '@/lib/domain/event-presentation';
 
 import posterImage from '@/assets/event/cartaz-palestra.png';
 
+import { JourneyAnchor, JourneyNode, JourneySegment } from './journey';
+
 export function Invitation({ event }: { readonly event: EventPresentation }) {
   const audience = event.audienceLabel ? ` ${event.audienceLabel}` : '';
 
@@ -39,9 +41,16 @@ export function Invitation({ event }: { readonly event: EventPresentation }) {
       .join('. ') + '.';
 
   return (
-    <section aria-labelledby="convite-titulo" className="u-shell py-16 lg:py-32">
-      <div className="u-reveal grid gap-12 lg:grid-cols-12 lg:items-center lg:gap-16">
-        <div className="flex max-w-[62ch] flex-col gap-6 lg:col-span-6">
+    <section
+      aria-labelledby="convite-titulo"
+      className="u-shell relative isolate py-16 lg:py-32"
+    >
+      {/* `isolate` is what puts the journey's slice above this section's ground and below the
+          poster, so the line genuinely passes behind the object (section 10.8). */}
+      <JourneySegment />
+
+      <div className="grid gap-12 lg:grid-cols-12 lg:items-center lg:gap-16">
+        <div className="u-reveal flex max-w-[62ch] flex-col gap-6 lg:col-span-6">
           <p className="text-micro-label text-sky-300 uppercase">O convite</p>
 
           <h2 id="convite-titulo" className="text-h2 font-stretch-[105%] text-text-primary">
@@ -71,15 +80,43 @@ export function Invitation({ event }: { readonly event: EventPresentation }) {
           screen at exactly 1024px.
         */}
         <div className="lg:col-span-5 lg:col-start-8 lg:justify-self-end min-[1280px]:-mr-10">
-          <Image
-            src={posterImage}
-            alt={alt}
-            sizes="(min-width: 1024px) 460px, (min-width: 640px) 420px, 100vw"
-            placeholder="blur"
-            loading="lazy"
-            fetchPriority="low"
-            className="u-poster h-auto w-full max-w-[420px] rounded-panel border border-ink-600 lg:max-w-[460px]"
-          />
+          {/*
+            An untransformed reference box the size of the poster. The wrapper inside it is the one
+            that settles, and a transform changes no layout — so the journey's points, measured
+            against this box, stay pinned to where the poster ends up rather than to where it began.
+          */}
+          <div className="relative w-full max-w-[420px] lg:max-w-[460px]">
+            <div className="u-reveal u-poster-settle">
+              <Image
+                src={posterImage}
+                alt={alt}
+                sizes="(min-width: 1024px) 460px, (min-width: 640px) 420px, 100vw"
+                placeholder="blur"
+                loading="lazy"
+                fetchPriority="low"
+                className="u-poster h-auto w-full rounded-panel border border-ink-600"
+              />
+            </div>
+
+            {/*
+              ≤ 1023px — the line runs in the gutter beside the copy, steps out to mark the poster,
+              dips behind it and returns. One crossing is the whole gesture; the phone has no room
+              for more and does not need it.
+            */}
+            <JourneyAnchor className="-top-8 -left-2.5 lg:hidden" />
+            <JourneyNode className="top-[24%] -left-2.5 lg:hidden" />
+            <JourneyAnchor className="top-[52%] left-[18%] lg:hidden" />
+            <JourneyAnchor className="-bottom-8 -left-2.5 lg:hidden" />
+
+            {/*
+              ≥ 1024px — the line arrives almost vertically from the date lockup directly above,
+              marks the poster's left shoulder, crosses behind it and leaves low and left, which is
+              the sweep that carries it across to the details column.
+            */}
+            <JourneyNode className="top-[14%] -left-3.5 hidden lg:block" />
+            <JourneyAnchor className="top-[46%] left-[32%] hidden lg:block" />
+            <JourneyAnchor className="bottom-[7%] left-[6%] hidden lg:block" />
+          </div>
         </div>
       </div>
     </section>

@@ -31,6 +31,8 @@
  * three places.
  */
 
+import { JourneyAnchor, JourneyNode, JourneySegment } from './journey';
+
 interface Organization {
   readonly name: string;
   /** The mark's own line breaks, as the banner sets them. */
@@ -54,23 +56,40 @@ export function Credits() {
     // Deliberately the tightest section on the page (section 4.2). Uniform section padding is what
     // makes a page read as a template; the credits bar is a footer device and earns less air than
     // the sections that carry the event.
-    <section aria-labelledby="apoio-titulo" className="u-shell py-12 lg:py-16">
+    <section aria-labelledby="apoio-titulo" className="u-shell relative isolate py-12 lg:py-16">
+      {/*
+        Where the journey resolves (section 10.8). The line comes down, flattens into a short
+        horizontal run and stops on a node a few pixels above the panel's shoulder — a chart that
+        has arrived rather than one that was cut off. One ending, one node, and deliberately no ring:
+        the two rings on the page belong to the origin and to the action, and a third here would
+        make an ending look like something to do.
+
+        Both points sit outside the block that reveals, so the panel's 12px entrance cannot drag the
+        line's last vertex with it.
+      */}
+      <JourneySegment />
+
       <h2 id="apoio-titulo" className="sr-only">
         Realização e apoio
       </h2>
 
-      <div className="u-reveal rounded-panel bg-blue-500 px-6 py-8 sm:px-10 sm:py-10 lg:px-16 lg:py-12">
-        <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:gap-16">
-          <Group label="Realização" organizations={ORGANIZERS} className="lg:flex-1" />
+      <div className="relative">
+        <JourneyAnchor className="-top-3.5 left-8 lg:left-16" />
+        <JourneyNode className="-top-3.5 left-[36%] lg:left-[26%]" />
 
-          {/* The vertical rule the banner uses between the two groups; a horizontal one when the
-              panel stacks. */}
-          <div
-            aria-hidden="true"
-            className="h-px w-full bg-white/25 lg:h-auto lg:min-h-28 lg:w-px lg:self-stretch"
-          />
+        <div className="u-reveal rounded-panel bg-blue-500 px-6 py-8 sm:px-10 sm:py-10 lg:px-16 lg:py-12">
+          <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:gap-16">
+            <Group label="Realização" organizations={ORGANIZERS} className="lg:flex-1" />
 
-          <Group label="Apoio" organizations={SUPPORTERS} />
+            {/* The vertical rule the banner uses between the two groups; a horizontal one when the
+                panel stacks. */}
+            <div
+              aria-hidden="true"
+              className="h-px w-full bg-white/25 lg:h-auto lg:min-h-28 lg:w-px lg:self-stretch"
+            />
+
+            <Group label="Apoio" organizations={SUPPORTERS} />
+          </div>
         </div>
       </div>
     </section>

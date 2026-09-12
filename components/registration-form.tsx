@@ -126,12 +126,20 @@ export function RegistrationForm({
   accepting,
   unavailableMessage,
   links,
+  unavailable,
 }: {
   siteKey: string;
   accepting: boolean;
   unavailableMessage: string | null;
   /** Four public strings for the outcome panel's secondary actions. No part of the event row. */
   links: EventLinks;
+  /**
+   * The composition shown when `accepting` is false, rendered on the server and handed over as a
+   * node (`ClosedPanel`). The branch below still belongs to this component — an outcome already on
+   * screen outranks any state the page arrives in — but the markup for that state, and the facts in
+   * it, never enter the client bundle. `unavailableMessage` remains the fallback.
+   */
+  unavailable?: React.ReactNode;
 }) {
   const [state, formAction, isPending] = useActionState<RegistrationFormState, FormData>(
     registerAction,
@@ -319,9 +327,11 @@ export function RegistrationForm({
   if (!accepting) {
     // Full with no waiting list, or closed. The form is replaced by the reason rather than left in
     // place to accept a submission that cannot succeed.
+    if (unavailable) return <>{unavailable}</>;
+
     return (
-      // The same accent the hero's state banner wears, so the two sentences read as one state
-      // rather than as two unrelated notices.
+      // The bare fallback, for a caller that passes no composition. The same accent the hero's
+      // state banner wears, so the two sentences read as one state rather than as two notices.
       <Panel accent="border-sky-300/40">
         <p role="status" className="text-body text-text-primary">
           {unavailableMessage}

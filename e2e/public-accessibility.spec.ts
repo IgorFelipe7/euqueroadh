@@ -12,6 +12,9 @@
  * reduced motion, the meaning of the copy — was reviewed by hand and is asserted in
  * `public-design.spec.ts`.
  *
+ * Every scan waits for the page to settle first; see `settle` below for why that is a correctness
+ * requirement rather than a convenience.
+ *
  * Playwright runs spec files in alphabetical order, so this one runs **before** the other public
  * suites. It therefore sets the event open itself, uses its own synthetic number for the single
  * registration it makes, and resets the event afterwards — which also deletes that row — so the
@@ -27,7 +30,35 @@ const OPEN = { capacity: 50, waitlistEnabled: false, state: 'open' } as const;
 /** WCAG 2.2 AA, which is the standard PRODUCT-SPEC.md names. */
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
+/**
+ * Wait for the page to stop moving before measuring it.
+ *
+ * Axe's contrast check reads computed colours, and it blends them through every ancestor's opacity.
+ * Run while the hero's 630ms entrance is still in flight, it therefore measures a gold button at
+ * `opacity: 0.2` against the navy behind it, reports 1.2:1, and fails — a real reading of a state
+ * that exists for half a second and that SC 1.4.3 is not about. It reproduced in roughly one run in
+ * three, which is worse than a failure: it is a suite that cannot be trusted either way.
+ *
+ * So the scan waits for the page's own animations to finish rather than for a duration. Nothing on
+ * these routes loops — the one infinite animation, the submit spinner, exists only while a
+ * submission is in flight and none of these states has one — so this settles in about two seconds,
+ * the counting rail's entrance being the longest of them (VISUAL-DIRECTION.md section 7.4), and
+ * asserts against the page a person actually reads.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      document
+        .getAnimations()
+        .every((animation) => animation.playState === 'finished' || animation.playState === 'idle'),
+    undefined,
+    { timeout: 10_000 },
+  );
+}
+
 async function scan(page: Page, label: string): Promise<void> {
+  await settle(page);
+
   const results = await new AxeBuilder({ page })
     .withTags(TAGS)
     // Cloudflare's widget is a cross-origin iframe we do not author and cannot fix; its own

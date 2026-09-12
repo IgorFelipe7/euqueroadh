@@ -325,6 +325,13 @@ Reasoning, in order:
 Gold appears in exactly three places: the primary CTA, the word `gratuita` in the details list, and
 the submit button. Nowhere else. If gold shows up in a fourth place, the design is drifting.
 
+**One amendment, Phase 5.2 (§ 7.4).** The counting rail carries **two** gold beads, one bead wide,
+and they are the fourth place. They are admitted because they do the rationing's job rather than
+breaking it: they are the eye's finishing point on an object made of one blue, and there are two of
+them on a page that has no other warm mark above the fold. Two conditions bound them — they are
+deepened (`gold-400` mixed 86% with `blue-600`) so they cannot compete with the one gold *button* in
+the same view, and the count is two. A third gold bead is drift.
+
 ### 3.5 Button hierarchy
 
 | Level | Appearance | Used for |
@@ -542,8 +549,15 @@ The single most important typographic decision. It reproduces the banner's hiera
 
 ## 7. Background and depth
 
-Total decorative budget for the entire page: **one SVG chart, one radial glow, one grain overlay.**
-Nothing else. No blobs, no mesh gradients, no floating cards, no glassmorphism, no particles.
+Total decorative budget for the entire page: **one SVG chart, one radial glow, one grain overlay,
+the Financial Journey Line (§ 10.8), and the counting rail (§ 7.4).** Nothing else. No blobs, no mesh
+gradients, no floating cards, no glassmorphism, no particles.
+
+The last two items are amendments — Phase 5.1 and Phase 5.2 — and both are admitted on the same
+terms as the first: each is the subject of the talk rather than an ornament borrowed from elsewhere,
+each is *one* idea rather than several, and each was added once, deliberately, for a named reason.
+The budget has grown twice in the life of this page and both entries are specified in full. A sixth
+element is drift, and the answer to it is this sentence.
 
 ### 7.1 The chart motif
 
@@ -552,8 +566,12 @@ test (§ 1.7): it *is* the subject of the talk.
 
 - A single inline `<svg>` — one `<path>` for the line, 8–12 `<rect>`s for the volume bars beneath.
 - Stroke `sky-300` at 6% opacity; bars `blue-500` at 4%.
-- Positioned in the hero, bleeding off both horizontal edges, its brightest region coinciding with
-  the radial glow so the page has one light source (§ 1.2).
+- Positioned in the hero, bleeding off both horizontal edges.
+- **Amended in Phase 5.2.** Below 1024px it is unchanged. From 1024px its mask centre moves to the
+  left of the frame, under the type stack and the CTA, because the counting rail (§ 7.4) now holds
+  the right half and two chart-like things in one corner is mush. The glow does not move: the object
+  and the date are still lit by the page's single light source (§ 1.2). What moved is texture, not
+  light, and the motif still bleeds off the left edge.
 - Inline (not a file) so it costs no request and can be themed by CSS custom properties.
 - `aria-hidden="true"`, `focusable="false"`.
 - Size budget: ≤ 2 KB of markup.
@@ -583,6 +601,135 @@ page does not need WebGL.
   ([ARCHITECTURE.md § 9](./ARCHITECTURE.md)).
 
 Both are `pointer-events: none` and `aria-hidden`.
+
+### 7.4 The counting rail — Phase 5.2
+
+**Approved amendment.** The hero's right half held one object — the `19SET` lockup, low and cropped —
+and a great deal of air above it that nothing explained. § 5.1 asks that half to be the composition's
+second subject; what was there was the second subject's *caption*. This section adds the object.
+
+**The idea, in one sentence.** An abacus, reduced to what a contemporary designer would keep of it: a
+partial frame, five rails, twenty-two beads and two gold ones, drawn in the page's own palette,
+cropped by the right edge of the frame like everything else on that side of the hero.
+
+It qualifies on § 1.7's meaning test for the same reason the chart motif does — counting, ordering
+and putting values where they belong *is* the subject of the talk — and it takes its art direction
+from `references/visual/hero/abacus-reference.jpg`: a dark navy object, blue beads, a very few brass
+ones. What it does not take is the render. There is no photograph, no 3D framework, no material, no
+floor shadow. It is 5 KB of inline SVG.
+
+#### What keeps it from reading as a toy
+
+| Decision | Why |
+| --- | --- |
+| A **partial frame** — a crown and a left stile that dissolve to the right, no bottom member at all | A closed tray is a school abacus. An open bracket is an object. |
+| **Uneven groups, mostly left** — a rail carrying one bead, clusters resting on the stile, gaps wide enough for a movement to be legible | The asymmetry of the reference. A grid of evenly spaced dots is a texture, not a count. |
+| **One blue, mixed toward the page's own ground** (`blue-500` at 74% with `ink-900`), with a matte top-to-bottom shade and no specular highlight | The flat token is the pill's colour and reads as plastic at bead size. |
+| **An empty base rail** | The lockup's cap height reaches into that row at every width; a bead half-behind a glyph reads as a mistake. Emptied, the rail does three other jobs — the stile stands on it, it rhymes with the line one gap below it, and the date drops into the quiet it leaves. |
+| **Two gold beads** (§ 3.4) | The eye needs somewhere to finish. Two, deepened, never three. |
+
+#### Where it sits, and why that is arithmetic rather than taste
+
+The object's **lowest rail sits exactly one rail gap above the Financial Journey Line's run through
+the hero** — the altitude the `19SET` lockup stands on. So the line reads as the rail this
+composition is missing, and the date as the value counted onto it. Nothing is drawn twice and nothing
+is superimposed: the relationship is rhythm.
+
+That position is computed in the stylesheet from the tokens the lockup is sized from, never
+eyeballed:
+
+```
+bottom: calc(19% + 0.1615 * var(--date-size) + 0.1 * var(--rail-w))
+         │           │                          └ one rail gap: 90 of the drawing's 900 units
+         │           └ 19% of the lockup's own 0.85em box — where its baseline is
+         └ the lockup wrapper's own offset from the hero's foot
+```
+
+`--date-size` was hoisted out of `.u-date-lockup` for this: two elements now depend on it, and a
+number typed twice is a rail that drifts the first time the lockup is resized.
+
+`--rail-w` is `min(42vw, 700px)` and that ceiling is measured, not chosen. The object is 0.6 of its
+own width tall once the gap beneath it is counted; at 1024px — where `Financeira` is capped at 7.5rem
+and therefore takes a *larger* share of the frame than at 1440px — anything wider drives the crown up
+into the display line. Anything much narrower does the opposite damage: the object stops being wider
+than the lockup beneath it and the beads nearest the date end up behind it. Both failures are pinned
+by tests in `e2e/public-design.spec.ts`.
+
+**Depth is the § 7.2 model doing a third job.** The object is in the hero's back plane, the journey
+line paints in front of it, and the lockup stands in front of both. Three planes from two occlusions,
+no translucency, no blur.
+
+#### Motion
+
+Three behaviours, and each is bounded by what it is allowed to cost.
+
+**Entrance** — pure CSS, no observer, no island, because the object is above the fold by definition.
+The frame settles, the five rails extend out of the stile, the bead groups arrive from the right —
+always from the right, because a bead travelling left is being counted and one travelling right is
+being cleared — and the second gold bead is the last beat, landing beside the date at about 1.9s.
+`transform` and `opacity` only; the delays are set so that no more than seven elements are ever in
+flight at once, which is § 10.4's cap.
+
+**Pointer** — a bounded amendment to § 10.4's ban on parallax, and the ban's own reason is what
+bounds it. The object takes a few degrees of perspective from the pointer's position in the viewport,
+pivoted on its bottom-left corner — the one point that must not move, because it is where the object's
+rhythm meets the line's — and the nearer bead groups drift a few units *along their rails*, which is
+the one direction a bead can actually travel. Both are damped by a 520ms transition, so the object
+arrives where the pointer went a moment ago rather than tracking it. It attaches only on a fine
+pointer, only at 1024px and above, and never under reduced motion: a tilt that fires on tap and then
+sticks is exactly the gimmick the prohibition exists to prevent. The island is `RailPointer`: one
+passive listener, one rAF, two custom properties, about forty lines.
+
+**Scroll** — two movements, once each, and **no second scroll listener anywhere on the page**. A new
+journey primitive, `JourneyCue`, marks a height; the controller that already measures the page reports
+having passed it with the same `data-reached` flag it writes on the five visible nodes, and a
+stylesheet rule slides one bead group left. Both cues sit well below the object — the first under the
+hero's foot, the second inside the next section — so neither can fire on the frame the page arrives.
+Reversible, like the line itself: scroll back and the beads return, because the whole system reads the
+reader's position rather than remembering it.
+
+#### The scrub, and the fusion — Phase 5.3
+
+Two additions, and they are why the object stopped being an illustration.
+
+**The beads follow the scroll.** The hero's scroll position, normalised across the object's own
+height, drives a horizontal offset per bead group — continuously and reversibly, not as two triggered
+snaps. The amplitudes are a hierarchy rather than a setting: two or three groups answer clearly, one
+of them travelling *right* while the others travel left, and the rest barely move. The gold beads are
+the quietest of all, because an emphasis that fidgets stops being an emphasis. A convergence tail
+(§ 10.1, rule 3) gives the movement mass without unhooking it from the reader's thumb.
+
+**The line merges with one rail.** The Journey Line descends the gap between the type and the object,
+becomes collinear with the rail carrying the second gold bead for a short run — the line passes
+*behind* the object, so along that run the rail itself simply reads brighter and heavier — and then
+peels off and lands on the date. Short on purpose: a moment of coincidence, not the line becoming the
+rail. The entry and exit points are positioned as percentages of the object's own box rather than
+from a formula over type tokens, so the fusion survives a change of typography, and a test measures
+it at 1024, 1280, 1440 and 1920.
+
+#### Reduced motion
+
+A different program, not a faster one, exactly as § 10.8 requires of the line. The entrance does not
+run, the perspective is the static one the object was drawn at, the pointer island never attaches,
+the scrub never runs, and the two bead accents are **already made** — the controller reports every cue
+reached in this mode, so what renders is the composition after both counts rather than a version that
+never moved.
+
+#### Where it does not go
+
+**Below 1024px there is no counting rail, and that is a decision rather than an omission.** The phone
+and tablet heroes are a single column of display type with the lockup cropped by the edge; there is no
+right-hand region to put an object in. Every version that fits — a sliver in the corner, a band under
+the CTA, a shrunken copy — is either unreadable as an abacus or competing with the primary action at
+the width where the primary action matters most. The brief's own constraint settles it: nothing may
+make the hero harder to read on a phone. So the mobile hero is unchanged, and the object costs a phone
+exactly nothing: no markup, no bytes, no listener.
+
+#### The test it has to pass
+
+Take the object out and the hero is what it was: correct, and short of a second subject. Take the
+*motion* out and the object still reads — which is why the entrance is choreography rather than
+construction, and why the authored bead positions are a finished composition on their own.
 
 ---
 
@@ -733,10 +880,28 @@ the page does not jump.
 
 ## 10. Motion system
 
-### 10.1 Philosophy
+### 10.1 Philosophy — revised in Phase 5.3
 
-**The page settles once, then gets out of the way.** Motion exists to establish hierarchy on arrival
-and to confirm touch. It never decorates, never loops, and never gates content.
+**Calm at rest, kinetic under the hand.** The page still settles once on arrival and still never
+gates content. What Phase 5.3 changes is what is allowed *after* that: scroll and pointer may drive
+motion expressively, because motion that answers an action reads as an instrument responding, while
+motion that runs on its own reads as decoration.
+
+Five rules, and they are the whole system:
+
+1. **Causal.** Every movement past the entrance is the consequence of something the visitor did — a
+   scroll position, a pointer position. Nothing moves because time passed.
+2. **Reversible where reversal means something.** Scroll back up and the line retracts, the beads
+   return, the nodes unlight. The page reads the reader's position; it does not keep a score.
+3. **Convergence tails are permitted.** After a real input, a value may interpolate toward its target
+   across a few frames and then stop — with an explicit epsilon *and* an explicit time ceiling, and
+   the frame loop cancelling itself the moment it converges. This is what buys mass and inertia
+   without buying a loop.
+4. **No infinite decorative animation.** Unchanged and absolute: nothing idles, pulses, shimmers or
+   breathes while the page is untouched. A loop with no input behind it is decoration.
+5. **Reduced motion is a complete static state**, never a faster one; and performance stays a
+   requirement rather than a budget to spend — no measurement during scroll, no per-frame work at
+   rest, `transform` and `opacity` only.
 
 ### 10.2 Primitives
 
@@ -757,6 +922,7 @@ no `width`/`height`, no `top`/`left`.
 | --- | --- |
 | Hero entrance | `rise` on the kicker, display-2, display-1, pill, date, meta and CTA, staggered 60 ms, total under 700 ms. Once, on load. Pure CSS `animation-delay` — no JavaScript. |
 | Chart motif | One `stroke-dashoffset` draw over 1200 ms, `ease-out`, 200 ms delay. Once. Decorative. |
+| Counting rail | Frame, rails, then bead groups, staggered; ends at ~1.9 s. `transform`/`opacity` only, ≤ 7 elements in flight. Once, on load, from 1024 px (§ 7.4). |
 | Section reveal | `rise` on first intersection, 300 ms, `threshold: 0.15`, `once: true`. One shared `IntersectionObserver`. |
 | Button hover | `settle` on background |
 | Button / row tap | `press` |
@@ -766,11 +932,20 @@ no `width`/`height`, no `top`/`left`.
 
 ### 10.4 Hard prohibitions
 
-- No scroll-jacking, no scroll-snapping, no pinned sections.
-- No scroll-linked scrubbing (parallax, scroll-driven progress). It runs work on every frame during
-  scroll and is a direct INP and jank risk on low-end Android.
-- No looping animation anywhere: no pulse, no shimmer, no bounce, no marquee.
-- No animation on more than ~8 elements simultaneously.
+- No scroll-jacking, no scroll-snapping, no pinned sections. Scroll may *drive* motion (§ 10.1, rule
+  1); it may never take the scroll away from the reader.
+- Parallax is pointer-driven only, bounded to a few degrees on a single decorative object,
+  desktop-only, and off under reduced motion (§ 7.4).
+- Scroll-linked scrubbing is permitted **only where a section of this document bounds it and names
+  its costs**: the Financial Journey Line's `stroke-dashoffset` and head (§ 10.8), and the counting
+  rail's bead positions (§ 7.4). The prohibition's reason stands — scroll-linked work is an INP and
+  jank risk on low-end Android — so every such driver shares one measurement, one `requestAnimation-
+  Frame` and one passive listener for the whole page, writes custom properties rather than reading
+  layout, and stops the moment it converges.
+- No looping animation anywhere: no pulse, no shimmer, no bounce, no marquee. The journey's two rings
+  play **once each**, when the line reaches them, and never again.
+- No animation on more than ~8 elements simultaneously. The counting rail's entrance is staggered to
+  hold that ceiling at seven (§ 7.4).
 - No staggered reveal below the fold beyond the first section — a page that keeps animating as you
   scroll feels cheap, not premium.
 
@@ -802,6 +977,131 @@ exit animation. See [DECISIONS.md](./DECISIONS.md) for the full trade-off.
 
 ---
 
+### 10.8 The Financial Journey Line — Phase 5.1
+
+**Approved amendment.** The page as shipped in Phase 5 was clean, quiet and correct, and had nothing
+anyone would describe afterwards. This section adds exactly one thing, and it closes the
+composition's real gap: the `19SET` lockup sat in the bottom right of the hero with nothing to
+explain why, and the chart motif behind it was texture rather than subject.
+
+**The idea, in one sentence.** One line begins at the event's date, descends past the poster, the
+details and the form, and comes to rest on the organizers' panel — so the page reads as a single
+trajectory rather than as five stacked sections. *"Aquele site da linha que vai acompanhando a
+página."*
+
+#### Narrative
+
+Five moments, five nodes, and nothing between them but the line:
+
+| Node | Where | What it does |
+| --- | --- | --- |
+| **Origin** | On the `19SET` lockup's own baseline, off the left shoulder of the `19` | The date stands *on* the line. From `lg` a horizontal approach run crosses the empty middle of the hero into it — which is the reason the lockup sits where it sits. |
+| **Poster** | The poster's left shoulder | The line marks the object, then passes behind it. |
+| **Details** | The shell's left margin | An editorial mark in the margin beside the facts. |
+| **Registration** | The form panel's top-left shoulder | The destination. The line points into the panel, crosses behind it, and leaves. |
+| **Resolution** | Just above the credits panel | The line flattens into a short horizontal run and stops. |
+
+#### Architecture
+
+- **The shape is declared in CSS, not in path data.** A handful of zero-size points
+  (`JourneyAnchor`, `JourneyNode`) are positioned against the objects they belong to; the controller
+  reads where they actually landed and builds one polyline through them. Responsive behaviour
+  therefore lives where the rest of the layout lives, and a breakpoint can be recomposed without
+  touching a path command. Two compositions exist — a gutter rail below `lg`, the asymmetric
+  traversal at `lg` and above — and each excludes the other's points with `display: none`.
+- **The polyline is monotonic in `y`.** Intermediate vertices are swung horizontally only. That one
+  property is what lets a scroll position map onto path length at all, and it is why the line can
+  never double back across content it has already passed.
+- **Per-section canvases, one polyline.** The polyline is sliced across a `JourneySegment` in each
+  section, cut exactly at the boundaries so the slices meet. Each sits at `z-index: -1` inside a
+  section that isolates itself, which puts the line above that section's background fill and below
+  every piece of its content — so the poster, the form panel and the credits panel occlude it with
+  no explicit z-index anywhere (§ 7.2). Only the segment currently being drawn repaints.
+- **Decorative throughout:** `aria-hidden`, `focusable="false"`, and `pointer-events: none` on the
+  canvases *and* on the points. It carries no data, no axis and no number.
+
+#### The scroll driver, and its costs
+
+The exception to § 10.4 is bounded by how the work is split:
+
+- Geometry — every `getBoundingClientRect` — runs on mount, on resize, and when the document's own
+  height changes (one `ResizeObserver` on `<body>`, which catches the lazily loaded poster and an
+  expanded error summary). **Never during a scroll.**
+- Painting runs in one `requestAnimationFrame`, scheduled only when something changed. It reads two
+  numbers off `window` and writes one custom property per segment, skipping the write when the value
+  is unchanged — which, progress being monotonic, means at most one segment writes per frame.
+- One passive `scroll` listener, one rAF, one observer, for the whole page. No per-node listener.
+- Zero dependencies, and roughly 2 KB of JavaScript.
+
+The drawn tip sits at 82% of the viewport height: ahead of the reader, and low enough that the hero's
+approach run is complete on the first frame.
+
+#### Entrance
+
+The hero's sequence gains a seventh beat and re-orders around it — kicker, `educação`, `Financeira`,
+the pill, the meta, the CTA, and **the date lockup last**, resolving as the line reaches it. The step
+drops from 60 ms to 50 ms so seven beats still finish inside § 10.3's 700 ms ceiling. The line's
+opening draw is the one moment `stroke-dashoffset` is ever transitioned (1100 ms); the first scroll
+ends it, and the controller owns that number outright from then on.
+
+#### The poster moment
+
+The one piece of choreography that is not the shared `rise`: `translateY(34px) rotate(-1.6deg)
+scale(0.972)` settling over 620 ms on first intersection. An object that only slides reads as a
+slide; one that also loses a degree and a per cent reads as having been *placed*. Transform and
+opacity only — the ground shadow beneath it is never animated (§ 14). It reuses the existing reveal
+by overriding two custom properties rather than introducing a second mechanism.
+
+#### Reduced motion
+
+Not a faster version — a different one. The line is **present and complete**, drawn end to end, with
+every node settled; the scroll listener is never attached and no frame work ever happens. The rings
+do not render at all, and the poster is already placed. Removing the line would change what the page
+*is* rather than how it arrives, which § 10.6 does not permit.
+
+#### Where it does not go
+
+`/privacidade` has no journey, no nodes and no controller. A privacy notice is not a marketing
+experience.
+
+#### The test it has to pass
+
+With the animation removed the page must still look excellent. The line's absence costs the
+composition nothing structural, because every node marks something that was already there.
+
+### 10.9 The choreography — Phase 5.3
+
+One page-wide rule: **each section has at most one primary kinetic behaviour**, and it belongs either
+to the Journey Line or to that section's own subject. The rhythm is impact → movement → breath →
+movement → climax → rest.
+
+| Section | Its one behaviour |
+| --- | --- |
+| **Hero** | Maximum intensity: the counting rail's beads scrub with scroll, the line descends, merges briefly with one rail and lands on the date, the pointer tilts the object. |
+| **O convite** | Deceleration. The poster's existing settle and the line passing behind it — nothing new. |
+| **Detalhes** | Causality made literal: the facts resolve **because the line arrived**, not because a generic observer fired. |
+| **Inscrição** | The climax, and it is one gesture: the form panel's border brightens once as the line reaches it, and settles. |
+| **Realização e apoio** | Resolution. The line's head fades out where the line comes to rest. |
+
+**The three drivers, and all three share one loop.** `FinancialJourney` already owns the page's only
+passive scroll listener and its only `requestAnimationFrame`; Phase 5.3 adds work inside that frame
+rather than a second loop:
+
+- **Draw** — `stroke-dashoffset` per segment, as before (§ 10.8).
+- **Head** — the exact tip of the drawn stroke, from `getPointAtLength` on the active segment only:
+  a short brighter run of the stroke itself plus a small bloom. A concentration of energy at the
+  leading end, never a dot travelling along a track.
+- **Energy** — scroll speed, decayed each frame, written as one custom property on the active segment
+  and mapped only to the head's length and opacity. A change of energy, never a change of style: the
+  line's own weight and colour do not move. Off below 768px until it is profiled on a weak device.
+- **Scrub** — the hero's scroll position, normalised over the counting rail's own height, smoothed by
+  a convergence tail and written as one custom property. The rail's bead groups read it with
+  different amplitudes and opposite signs (§ 7.4).
+
+Everything above is reversible, stops when the reader stops, and does not exist under reduced motion.
+
+---
+
 ## 11. Responsive behaviour
 
 ### 11.1 Breakpoints
@@ -817,6 +1117,9 @@ exit animation. See [DECISIONS.md](./DECISIONS.md) for the full trade-off.
 
 `lg` is a distinct composition, not an interpolation. That is the difference between a designed
 response and a collapsed desktop layout.
+
+The counting rail (§ 7.4) exists at `xl` and `2xl` only — 1024 px and above, the two ranges whose hero
+actually has a right-hand region. Below that it is not rendered at all, so it costs a phone nothing.
 
 ### 11.2 Constraints that must hold at every width
 
@@ -938,8 +1241,10 @@ If any of these appears in the implementation, it is a defect regardless of how 
 
 **Motion and technology**
 
-- WebGL / Three.js / Spline embeds.
-- Scroll-jacking, scroll-snapping, parallax, scroll-linked scrubbing.
+- WebGL / Three.js / Spline embeds. A CSS `perspective()` of a few degrees on one flat SVG is not an
+  exception to this; a 3D scene, a loaded model or a material is.
+- Scroll-jacking, scroll-snapping, scroll-driven parallax, scroll-linked scrubbing. (The two named
+  exceptions, and their costs, are § 10.8 and § 7.4. Nothing else.)
 - Looping animation of any kind.
 - Animation on `filter`, `box-shadow`, `width`, `height` or layout properties.
 - Animating more than ~8 elements at once.

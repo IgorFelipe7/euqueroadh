@@ -232,6 +232,8 @@ Client components on the public page — the complete list:
 | `RegistrationForm` | `useActionState`, phone mask, blur validation, focus management | ~6 KB |
 | `StickyCta` | `IntersectionObserver` on the hero CTA | ~1 KB |
 | `Reveal` | One shared `IntersectionObserver` for section entrances | ~1 KB |
+| `FinancialJourney` | The one measurement and one frame loop behind the journey line, and the cues the counting rail rides on ([VISUAL-DIRECTION.md](./VISUAL-DIRECTION.md) §§ 10.8, 7.4) | ~2 KB |
+| `RailPointer` | The counting rail's pointer response: one passive listener, two custom properties, fine pointers at ≥ 1024 px only (§ 7.4) | < 1 KB |
 
 Everything else — hero, details, poster, logos, footer — is a Server Component and ships zero
 JavaScript.
