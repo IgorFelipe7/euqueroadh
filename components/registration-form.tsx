@@ -547,6 +547,8 @@ const OUTCOME_ACCENT: Readonly<Record<RegistrationOutcome['kind'], string>> = {
   confirmed: 'border-success-300',
   waitlisted: 'border-sky-300',
   already_registered: 'border-border-strong',
+  // Not an error and not a success: the person is eligible, just not through this form.
+  age_not_eligible: 'border-border-strong',
   full: 'border-border-strong',
   closed: 'border-border-strong',
   invalid: 'border-border-strong',

@@ -34,6 +34,7 @@ insert into public.events (
   price_label,
   is_free,
   includes_label,
+  min_age,
   is_active
 ) values (
   'educacao-financeira-para-jovens',
@@ -51,6 +52,9 @@ insert into public.events (
   'Inscrições gratuitas',
   true,
   'Coffee break incluso',
+  -- The operating online eligibility floor (migration 11). Under 12 is directed to
+  -- contato@euqueroadh.com instead of completing the online flow; no guardian data is collected.
+  12,
   true
 )
 on conflict (slug) do nothing;

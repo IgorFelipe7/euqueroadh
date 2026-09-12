@@ -222,8 +222,13 @@ create table public.registrations (
 Notes on the constraints:
 
 - `reg_age_range` is a **technical** bound, deliberately not an eligibility rule
-  ([PRODUCT-SPEC.md § 4.3](./PRODUCT-SPEC.md)). A business restriction, if the organizers ever set
-  one, becomes nullable `events.min_age` / `events.max_age` checked inside `register_for_event`.
+  ([PRODUCT-SPEC.md § 4.3](./PRODUCT-SPEC.md)). The business restriction that the organizers have
+  since set — **online registration is 12 and over** — lives where this note always said it would:
+  nullable `events.min_age` / `events.max_age`, checked inside `register_for_event()` under the event
+  row lock, returning the `age_not_eligible` outcome and storing nothing
+  (migration `20260912090000_event_age_policy.sql`, DECISIONS.md Q7). The column CHECK is unchanged,
+  because an administrator correcting a record through `edit_registration()` is not performing an
+  online registration.
 - `reg_phone_shape` is a shape check only. The ANATEL DDD allowlist lives in application code because
   it changes; the shape does not.
 - `waitlist_rank` is intentionally *retained* after promotion or cancellation. It is a historical
@@ -2077,27 +2082,28 @@ The event is explicitly `para jovens`, one of the organizers is a teen ministry,
 collects age**. Participants under 18 are therefore not a hypothetical — they are a reasonable
 expectation, and the system will hold data that identifies their age band.
 
-This specification **does not** invent a parental-consent checkbox, does not impose a minimum age,
-and does not assert what the law requires. **None of this is legal advice.** What it does is refuse
+This specification **does not** invent a parental-consent checkbox and does not assert what the law
+requires. Item 2 has since been answered and implemented; items 1 and 3 remain open. **None of this is legal advice.** What it does is refuse
 to let the question pass silently: before the registration link is shared publicly, the organizers
 must record an answer to three things.
 
 | # | The organizers must confirm | Why it is operationally relevant here |
 | --- | --- | --- |
 | 1 | Whether participants under 18 are expected and accepted | Determines whether the dataset contains data about minors at all |
-| 2 | Whether any minimum or maximum age applies | The system currently applies **only** technical plausibility bounds (1–120). A real restriction becomes nullable `events.min_age` / `events.max_age` enforced inside `register_for_event`, with its own outcome and pt-BR message — a schema migration plus one branch. |
+| 2 | Whether any minimum or maximum age applies | **Answered: online registration is 12 and over** (DECISIONS.md Q7). Implemented as `events.min_age = 12`, enforced inside `register_for_event()` with the `age_not_eligible` outcome; under-12s are directed to `contato@euqueroadh.com` and **nothing is stored** for them. The 1–120 column CHECK remains a technical plausibility bound. |
 | 3 | What privacy handling they have determined is appropriate, given LGPD Art. 14's specific treatment of children and adolescents | Determines the wording of `/privacidade` and whether any additional step is needed at collection |
 
-The technical implementation proceeds without these answers under the documented default of **no
-business age restriction**. What must not happen is the link going live while the question is still
-unexamined. Tracked as **Q8** in [DECISIONS.md](./DECISIONS.md) and as a blocking line item on the
+The minimum-age half of this gate is now closed: the online floor is 12, it is enforced by the
+database rather than by the form, and no guardian data is collected from anyone. What must not happen
+is the link going live while items 1 and 3 are still unexamined. Tracked as **Q8** in [DECISIONS.md](./DECISIONS.md) and as a blocking line item on the
 launch checklist in [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) Phase 7.
 
 ### 12.2 Items that block a lawful privacy notice
 
 Four items must be answered by a human before `/privacidade` can be published, and therefore before
-launch: the **data controller's identity** (Q2), a **contact channel** for data-subject requests
-(Q3), the **retention period** (Q4), and the **minors decision** above (Q8). None of them blocks
+launch: the **data controller's identity** (Q2), the **retention period** (Q4), and the **minors privacy
+decision** above (Q8). The **contact channel** (Q3) is answered: `contato@euqueroadh.com`, published
+on `/privacidade`. None of the remaining items blocks
 implementation. See [DECISIONS.md](./DECISIONS.md).
 
 ---

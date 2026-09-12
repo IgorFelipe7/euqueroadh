@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(31);
+select plan(41);
 
 -- A closed event with free seats, and an open one with two seats.
 insert into public.events (id, slug, title, starts_at, capacity, registration_state, waitlist_enabled)
@@ -150,6 +150,80 @@ select throws_ok(
       '55555555-5555-5555-5555-555555555555', 'Ana Souza', 20::smallint, '11987654321')$$,
   '23514', null,
   'the RPC cannot be used to smuggle a malformed phone past the constraint');
+
+-- ------------------------------------------- the online eligibility policy ----
+-- Migration 11.  events.min_age is the authority; the Zod schema and the Server Action are defence
+-- in depth over it, and a direct call proves the database refuses on its own.
+update public.events set min_age = 12, capacity = 20
+ where id = '55555555-5555-5555-5555-555555555555';
+
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Menor de idade', 11::smallint, '+5519991240011')),
+  'age_not_eligible',
+  'an age below events.min_age is refused');
+select is((select count(*)::int from public.registrations where phone_e164 = '+5519991240011'),
+          0, 'and NOTHING is stored: the refusal is a redirection, not a record of a child');
+
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Exatamente no limite', 12::smallint, '+5519991240012')),
+  'confirmed',
+  'the floor is inclusive: exactly min_age is accepted');
+
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Adolescente', 16::smallint, '+5519991240016')),
+  'confirmed',
+  'a 16-year-old uses the normal flow - no parental-consent field exists and none is required here');
+
+-- Precedence: already_registered outranks eligibility, so a double tap gets a coherent answer even
+-- if the stored registration predates the policy.
+update public.registrations set age = 10 where phone_e164 = '+5519991240016';
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Adolescente', 10::smallint, '+5519991240016')),
+  'already_registered',
+  'a duplicate is still answered as a duplicate, ahead of the eligibility check');
+
+-- Eligibility outranks the master switch: a ten-year-old is told the real reason rather than being
+-- invited to come back when registrations reopen.
+update public.events set registration_state = 'closed'
+ where id = '55555555-5555-5555-5555-555555555555';
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Muito novo', 9::smallint, '+5519991240009')),
+  'age_not_eligible',
+  'eligibility is decided before the open/closed switch');
+update public.events set registration_state = 'open'
+ where id = '55555555-5555-5555-5555-555555555555';
+
+-- A ceiling, when one is set, and its absence when it is not.
+update public.events set max_age = 30 where id = '55555555-5555-5555-5555-555555555555';
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Acima do teto', 31::smallint, '+5519991240031')),
+  'age_not_eligible',
+  'max_age is enforced the same way');
+update public.events set max_age = null where id = '55555555-5555-5555-5555-555555555555';
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Sem teto', 80::smallint, '+5519991240080')),
+  'confirmed',
+  'and a null max_age means no ceiling');
+
+update public.events set min_age = null where id = '55555555-5555-5555-5555-555555555555';
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Sem piso', 7::smallint, '+5519991240007')),
+  'confirmed',
+  'a null min_age means no floor: the policy is per event, not hard-coded');
+
+select throws_ok(
+  $$update public.events set min_age = 40, max_age = 20
+     where id = '55555555-5555-5555-5555-555555555555'$$,
+  '23514', null,
+  'and an inverted policy is unrepresentable');
 
 select * from finish();
 rollback;

@@ -13,7 +13,7 @@ export function SignOutForm({ label, className }: { label: string; className?: s
     <form action={ROUTES.signOut} method="post">
       <button
         type="submit"
-        className={className ?? 'min-h-12 text-label text-blue-600 underline'}
+        className={className ?? 'min-h-12 text-label text-admin-blue underline underline-offset-4'}
       >
         {label}
       </button>

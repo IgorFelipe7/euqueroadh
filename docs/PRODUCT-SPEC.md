@@ -587,15 +587,16 @@ Technical measures are in [DATABASE-SECURITY.md § 11](./DATABASE-SECURITY.md). 
 The event is explicitly `para jovens`, one of the organizers is a teen ministry, and **the product
 collects age**. Participants under 18 are a reasonable expectation, not an edge case.
 
-This specification does **not** invent a parental-consent checkbox, does not impose a minimum age,
-and does not state what the law requires. **This is not legal advice.** What it does do is refuse to
+This specification does **not** invent a parental-consent checkbox and does not state what the law
+requires. Item 2 below has since been answered — the online minimum age is 12 — and is implemented;
+items 1 and 3 remain open. **This is not legal advice.** What it does do is refuse to
 let the question pass unexamined: before the registration link is shared publicly, the organizers
 must record an answer to three things.
 
 | # | To be confirmed by the organizers | Consequence |
 | --- | --- | --- |
 | 1 | Are participants under 18 expected and accepted? | Determines whether the dataset concerns minors at all |
-| 2 | Does any minimum or maximum age apply? | The system currently applies **only** technical plausibility bounds (1–120), never an eligibility rule. A real restriction becomes `events.min_age` / `events.max_age`, enforced server-side inside the allocation function with its own outcome and pt-BR message. |
+| 2 | Does any minimum or maximum age apply? | **Answered: online registration is 12 and over** (DECISIONS.md Q7, September 2026). Implemented as `events.min_age = 12`, enforced inside `register_for_event()` with the `age_not_eligible` outcome and its own pt-BR panel; under-12s are directed to `contato@euqueroadh.com` and nothing is stored for them. The table CHECK (1–120) remains a technical plausibility bound and is not an eligibility rule. |
 | 3 | What privacy handling have they determined is appropriate, given LGPD Art. 14's specific treatment of children and adolescents? | Determines the wording of `/privacidade` and whether anything is needed at the point of collection |
 
 Implementation proceeds under the documented default of **no business age restriction**. Launch does

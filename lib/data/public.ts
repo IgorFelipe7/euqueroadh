@@ -218,6 +218,8 @@ export type RegistrationAllocation =
   | { readonly outcome: 'confirmed'; readonly registrationId: string }
   | { readonly outcome: 'waitlisted'; readonly registrationId: string }
   | { readonly outcome: 'already_registered'; readonly status: RegistrationStatus }
+  /** Younger than `events.min_age`. The RPC stored nothing. */
+  | { readonly outcome: 'age_not_eligible' }
   | { readonly outcome: 'full' }
   | { readonly outcome: 'closed' }
   | { readonly outcome: 'unavailable' };
@@ -279,6 +281,9 @@ export async function registerParticipant(
       return row.status === 'confirmed' || row.status === 'waitlisted'
         ? { outcome: 'already_registered', status: row.status }
         : unexpected(row.outcome);
+
+    case 'age_not_eligible':
+      return { outcome: 'age_not_eligible' };
 
     case 'full':
       return { outcome: 'full' };

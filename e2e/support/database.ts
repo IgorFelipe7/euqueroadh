@@ -113,6 +113,18 @@ export async function updateActiveEvent(patch: Partial<EventFixture>): Promise<v
   });
 }
 
+/**
+ * Sets the active event's online eligibility floor (migration 11).
+ *
+ * The seeded value is 12. A suite that changes it must put it back, because `11-seed.sql` asserts
+ * the seeded value and would fail a run it is not even part of.
+ */
+export async function setMinimumAge(minAge: number | null): Promise<void> {
+  await withDb((db) =>
+    db.query('update public.events set min_age = $1 where is_active', [minAge]),
+  );
+}
+
 export async function activeEventId(): Promise<string> {
   return withDb(async (db) => {
     const { rows } = await db.query<{ id: string }>(

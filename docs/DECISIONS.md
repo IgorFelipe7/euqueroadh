@@ -488,7 +488,7 @@ defaults recorded here.
 | Question | Blocks | Recommended default in the meantime |
 | --- | --- | --- |
 | **Q2** data controller | Launch (`/privacidade`) | none — must be a real answer |
-| **Q3** contact channel | Launch + three strings degrade | none — must be a real answer |
+| **Q3** contact channel | ~~Launch~~ — **answered**: `contato@euqueroadh.com` | resolved |
 | **Q4** retention period | Launch (`/privacidade`) | 90 days after the event |
 | **Q5** production SMTP | Launch (admin sign-in in production) | local mail catcher from `supabase start` |
 | **Q6** real capacity | Launch (opening registrations) | seeded `closed` with `capacity = 0`, which the schema refuses to open |
@@ -511,17 +511,15 @@ constituted entity of the three. **This is a guess and must be confirmed.**
 
 *Blocks:* publishing `/privacidade`, and therefore launch. Not the build.
 
-#### Q3 · What is the contact channel for participants?
+#### Q3 · What is the contact channel for participants? — **ANSWERED (12 September 2026)**
 
-No phone, e-mail, WhatsApp or @handle appears anywhere on the banner. Needed in three places: the
-duplicate screen (`Fale com a organização`), the privacy notice (exercising data rights), and the
-`<noscript>` fallback.
+**Answer: `contato@euqueroadh.com`.**
 
-**Recommended default:** the organizers' WhatsApp number as a `wa.me` link. Any reachable channel
-works.
+It is defined once, as `ORGANIZATION_EMAIL` in `lib/domain/schemas.ts`, and used by the privacy
+notice's `Correção e exclusão` section and by the under-12 registration panel. No phone, WhatsApp or
+@handle is invented alongside it.
 
-*Blocks:* launch. Until it exists, three pieces of specified copy have nowhere to point — implement
-them with a clearly marked placeholder constant so wiring it up later is a one-line change.
+*No longer blocks launch.*
 
 #### Q4 · How long is registration data retained after the event?
 
@@ -606,10 +604,31 @@ render `Apoio: Sicredi` as text only.
 
 ### Blocks nothing
 
-#### Q7 · Is there a business age restriction?
+#### Q7 · Is there a business age restriction? — **ANSWERED (12 September 2026)**
 
-**Default:** no. Technical plausibility bounds only (1–120), explicitly not an eligibility rule.
-Distinct from Q8, which is about privacy handling rather than eligibility.
+**Answer: yes. Online registration is for 12 and over.** Anyone younger is directed to
+`contato@euqueroadh.com` and is handled by the organization directly; the site collects nothing from
+them.
+
+Implemented exactly as this entry said it would be if an answer arrived: nullable `events.min_age` /
+`events.max_age` (migration `20260912090000_event_age_policy.sql`), checked **inside**
+`register_for_event()` under the event row lock, with its own `age_not_eligible` outcome and its own
+pt-BR panel. The seeded event carries `min_age = 12`; the migration backfills it for an
+already-seeded database, so production receives the policy by running migrations rather than by hand.
+
+Three consequences are deliberate:
+
+- **`registrations.reg_age_range` (1–120) is unchanged.** It is a technical plausibility bound on the
+  column, not an eligibility rule. An administrator correcting a record through `edit_registration()`
+  is not performing an online registration, so `adminAgeSchema` stops at the technical bounds while
+  `ageSchema` applies the floor.
+- **No parental-consent checkbox, and no guardian fields.** Ages 12–17 use the ordinary three-field
+  flow. Adding a guardian field to satisfy a tick box would collect *more* personal data about a
+  child, not less.
+- **Eligibility is checked before the open/closed switch.** Telling a ten-year-old
+  `inscrições encerradas` would invite them back later, when the answer would still be no.
+
+Distinct from Q8, which is about privacy handling rather than eligibility, and which remains open.
 
 #### Q9 · Should an e-mail address be collected?
 
@@ -635,7 +654,7 @@ The banner prints it without the circumflex; Brazilian street registries commonl
 | --- | --- |
 | **Resolved** | Q1 — the event is **19 September 2026**, 19:00–21:00, `America/Sao_Paulo`. |
 | **Blocks implementation** | **Nothing.** |
-| **Blocks production launch** | Q2 (data controller), Q3 (contact channel), Q4 (retention), Q5 (production SMTP), Q6 (real capacity), Q8 (minors decision). Collected as the launch gate in [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) Phase 7. |
+| **Blocks production launch** | Q2 (data controller), Q4 (retention), Q5 (production SMTP), Q6 (real capacity), Q8 (minors privacy handling). **Resolved:** Q3 (contact channel — `contato@euqueroadh.com`) and Q7 (age policy — online minimum 12). Collected as the launch gate in [IMPLEMENTATION-PLAN.md](./IMPLEMENTATION-PLAN.md) Phase 7. |
 | **Blocks one feature** | Q10 (speaker section), Q11 (vector logos). |
 | **Blocks nothing** | Q7, Q9, Q12 — documented defaults apply. |
 

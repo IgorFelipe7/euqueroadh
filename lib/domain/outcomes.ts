@@ -5,6 +5,8 @@
  * its own designed screen.
  */
 
+import { ORGANIZATION_EMAIL } from './schemas';
+
 /** The persisted status of an existing registration, echoed back on a duplicate submission. */
 export type RegistrationStatus = 'confirmed' | 'waitlisted';
 
@@ -12,13 +14,17 @@ export type RegistrationStatus = 'confirmed' | 'waitlisted';
  * What the database decided. The advisory state rendered on the page may disagree — a visitor can
  * arrive from a cached page and still be waitlisted — so this is the only authority.
  *
- * Precedence when several apply (section 6): already_registered → closed → confirmed →
- * waitlisted → full. Checking duplicates first means a double tap always gets a coherent answer.
+ * Precedence when several apply (section 6): already_registered → age_not_eligible → closed →
+ * confirmed → waitlisted → full. Checking duplicates first means a double tap always gets a
+ * coherent answer; eligibility comes next because it is a fact about the person rather than about
+ * the moment, and "encerradas" would invite a ten-year-old to come back and try again.
  */
 export type RegistrationOutcome =
   | { readonly kind: 'confirmed' }
   | { readonly kind: 'waitlisted' }
   | { readonly kind: 'already_registered'; readonly status: RegistrationStatus }
+  /** Younger than `events.min_age`. Nothing is stored; the person is sent to a human channel. */
+  | { readonly kind: 'age_not_eligible' }
   | { readonly kind: 'full' }
   | { readonly kind: 'closed' }
   | { readonly kind: 'invalid' }
@@ -70,6 +76,17 @@ export function outcomeCopy(outcome: RegistrationOutcome): OutcomeCopy {
         body: [
           ALREADY_REGISTERED_BODY[outcome.status],
           'Precisa corrigir algum dado? Fale com a organização.',
+        ],
+      };
+
+    case 'age_not_eligible':
+      // No age is echoed back, and no guardian field is offered: the answer is a channel, not a
+      // form. The address is the organization's published one.
+      return {
+        heading: 'Inscrição online a partir de 12 anos',
+        body: [
+          'A inscrição pelo site é para pessoas de 12 anos ou mais.',
+          `Para participantes mais novos, fale com a organização pelo e-mail ${ORGANIZATION_EMAIL}.`,
         ],
       };
 

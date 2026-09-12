@@ -231,3 +231,55 @@ test('an event that does not exist raises rather than inventing an outcome', asy
   // The DAL turns this into `unavailable` and a generic pt-BR sentence; nothing of it is rendered.
   assert.match(error?.message ?? '', /event_not_found/);
 });
+
+/*
+ * The online eligibility policy (migration 11).
+ *
+ * Exercised over HTTP through PostgREST, exactly as the Server Action reaches it, because the Zod
+ * schema in `lib/domain/schemas.ts` is defence in depth and this is the layer that has to hold when
+ * someone POSTs straight at the endpoint with the browser's validation removed.
+ */
+test('the eligibility floor is enforced by the database, not only by the form', async () => {
+  const db = await connect();
+
+  try {
+    const eventId = await createEvent(db, { capacity: 10 });
+    await db.query('update public.events set min_age = 12 where id = $1', [eventId]);
+
+    const refused = await register(eventId, 'Menor de idade', 11, phone(7011));
+    assert.equal(refused.outcome, 'age_not_eligible');
+    assert.equal(refused.registration_id, null);
+    assert.deepEqual(await activeRows(db, eventId), [], 'nothing is stored for an ineligible age');
+    assert.equal((await counters(db, eventId)).confirmed, 0);
+
+    const atFloor = await register(eventId, 'No limite', 12, phone(7012));
+    assert.equal(atFloor.outcome, 'confirmed', 'the floor is inclusive');
+
+    const teenager = await register(eventId, 'Adolescente', 16, phone(7016));
+    assert.equal(teenager.outcome, 'confirmed', 'a 16-year-old uses the normal flow');
+
+    assert.equal((await counters(db, eventId)).confirmed, 2);
+    assert.equal((await counters(db, eventId)).waitlist, 0);
+  } finally {
+    await cleanup(db);
+    await db.end();
+  }
+});
+
+test('eligibility is decided before the open/closed switch', async () => {
+  const db = await connect();
+
+  try {
+    const eventId = await createEvent(db, { capacity: 10, state: 'closed' });
+    await db.query('update public.events set min_age = 12 where id = $1', [eventId]);
+
+    // A ten-year-old must read the real reason, not "inscrições encerradas" — which would invite
+    // them to come back later, when the answer would still be no.
+    const refused = await register(eventId, 'Muito novo', 9, phone(7009));
+    assert.equal(refused.outcome, 'age_not_eligible');
+    assert.deepEqual(await activeRows(db, eventId), []);
+  } finally {
+    await cleanup(db);
+    await db.end();
+  }
+});

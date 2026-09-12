@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { RegistrationAllocation, RegistrationCommand } from '@/lib/data/public';
 import type { PublicEventState } from '@/lib/domain/outcomes';
+import { AGE_BELOW_MINIMUM_MESSAGE, ORGANIZATION_EMAIL } from '@/lib/domain/schemas';
 import type { RegistrationLogFields } from '@/lib/observability/log';
 import type { TurnstileVerification } from '@/lib/turnstile/verify';
 
@@ -330,6 +331,11 @@ describe('mapping the database outcome', () => {
     ],
     [{ outcome: 'full' } as RegistrationAllocation, { kind: 'full' }, 'registration.full'],
     [{ outcome: 'closed' } as RegistrationAllocation, { kind: 'closed' }, 'registration.closed'],
+    [
+      { outcome: 'age_not_eligible' } as RegistrationAllocation,
+      { kind: 'age_not_eligible' },
+      'registration.age_not_eligible',
+    ],
   ])('turns %j into the matching outcome and log line', async (allocation, outcome, logEvent) => {
     const recorder = harness({ allocation });
 
@@ -389,6 +395,49 @@ describe('mapping the database outcome', () => {
         /select |insert |relation |pgrst|sqlstate|register_for_event|supabase/i,
       );
     }
+  });
+});
+
+/*
+ * The eligibility floor, at the Server Action boundary.
+ *
+ * The database is the authority — `events.min_age` is checked inside the allocation function — but
+ * an ineligible age is rejected by the schema first, which means no Cloudflare round trip and no
+ * database call for a submission that cannot succeed. The message is the redirection, not
+ * "idade inválida".
+ */
+describe('the online eligibility floor', () => {
+  it('refuses an under-age submission without verifying a token or touching the database', async () => {
+    const recorder = harness();
+
+    const state = await submit(recorder, formData({ ...VALID, age: '11' }));
+
+    expect(state.outcome).toBeNull();
+    expect(state.fieldErrors.age).toBe(AGE_BELOW_MINIMUM_MESSAGE);
+    expect(state.fieldErrors.age).toContain(ORGANIZATION_EMAIL);
+    expect(recorder.verified).toHaveLength(0);
+    expect(recorder.registered).toHaveLength(0);
+    expect(recorder.logs.at(-1)?.event).toBe('registration.validation_failed');
+  });
+
+  it('accepts exactly the minimum age', async () => {
+    const recorder = harness();
+
+    const state = await submit(recorder, formData({ ...VALID, age: '12' }));
+
+    expect(state.outcome).toEqual({ kind: 'confirmed' });
+    expect(recorder.registered.at(-1)?.age).toBe(12);
+  });
+
+  it('logs the field name and never the age itself', async () => {
+    const recorder = harness();
+
+    await submit(recorder, formData({ ...VALID, age: '9' }));
+
+    const line = JSON.stringify(recorder.logs.at(-1));
+    expect(line).toContain('age');
+    expect(line).not.toContain('"9"');
+    expect(line).not.toContain(':9');
   });
 });
 

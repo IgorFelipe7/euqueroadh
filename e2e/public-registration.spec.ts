@@ -28,6 +28,7 @@ import {
   registrationsFor,
   resetActiveEvent,
   restoreSeedState,
+  setMinimumAge,
   syntheticName,
   syntheticPhone,
   updateActiveEvent,
@@ -409,6 +410,119 @@ test('a submission with no token is refused before the database is touched', asy
  * server must use for the happy path answers `success: true` for **any** non-empty token — a forged
  * one, or one already spent. Asserting a refusal against it would assert nothing.
  */
+
+/* ================================================================================================
+ * The online eligibility floor
+ * ============================================================================================== */
+
+/**
+ * Under 12 does not complete the online flow, and is told where to go instead.
+ *
+ * Three layers, and only one of them is the guarantee:
+ *
+ *   * the **form** refuses before Cloudflare is contacted — a courtesy;
+ *   * the **Server Action** re-parses and refuses a request whose browser validation was removed —
+ *     the application boundary;
+ *   * **`events.min_age`**, checked inside `register_for_event()` under the event row lock — the
+ *     authority, and the only layer a tampered client cannot reach past. It is exercised here by
+ *     setting a floor the schema does not know about, which is the only way to reach that branch
+ *     through the browser; the 12-year-old floor itself is proved in the database suites.
+ *
+ * Nothing is stored in any of the three cases: the refusal is a redirection to a human channel, not
+ * a record of a child's data.
+ */
+test.describe('the online minimum age', () => {
+  test('refuses an under-12 in the form, naming where to go instead', async ({ page }) => {
+    await resetActiveEvent(OPEN);
+    const person = participant(70, '11');
+
+    await openRegistration(page);
+    await fillForm(page, person);
+    await awaitToken(page);
+    await submit(page);
+
+    /*
+     * `.first()` because the sentence is deliberately rendered twice: once in the error summary at
+     * the head of the form, and once beneath the field it belongs to. Both are the specified
+     * behaviour (PRODUCT-SPEC.md section 6.2), so the locator picks one rather than the design
+     * being changed to satisfy strict mode.
+     */
+    const message = page.getByText(/A inscrição online é para 12 anos ou mais/).first();
+    await expect(message).toBeVisible();
+    await expect(message).toContainText('contato@euqueroadh.com');
+
+    // The form is still a form: this is a correction, not a terminal outcome.
+    await expect(page.getByRole('button', { name: 'Confirmar inscrição' })).toBeVisible();
+    expect(await registrationsFor(person.e164)).toEqual([]);
+  });
+
+  test('refuses an under-12 submitted by a tampered client, and stores nothing', async ({
+    page,
+  }) => {
+    await resetActiveEvent(OPEN);
+    const person = participant(71, '30');
+
+    await openRegistration(page);
+    await fillForm(page, person);
+    await awaitToken(page);
+
+    // A well-formed request carrying a value no honest form would send. React still believes the
+    // field reads 30, so nothing client-side intervenes.
+    await tamper(page, 'age', '9');
+    await submit(page);
+
+    await expect(page.getByText(/A inscrição online é para 12 anos ou mais/).first()).toBeVisible();
+    expect(await registrationsFor(person.e164)).toEqual([]);
+    expect(await countRegistrations()).toBe(0);
+  });
+
+  test('the database is the authority, not the schema', async ({ page }) => {
+    await resetActiveEvent(OPEN);
+    // A floor the Zod schema does not know about, so the refusal can only have come from
+    // `register_for_event()` — which is the point of the layering.
+    await setMinimumAge(30);
+
+    try {
+      const person = participant(73, '20');
+
+      await openRegistration(page);
+      await fillForm(page, person);
+      await awaitToken(page);
+      await submit(page);
+
+      await expectOutcome(page, 'age_not_eligible', 'Inscrição online a partir de 12 anos');
+      await expect(page.getByText('contato@euqueroadh.com')).toBeVisible();
+
+      expect(await registrationsFor(person.e164)).toEqual([]);
+      expect(await countRegistrations()).toBe(0);
+    } finally {
+      await setMinimumAge(12);
+    }
+  });
+
+  test('accepts a 12-year-old through the ordinary flow, with no extra field', async ({ page }) => {
+    await resetActiveEvent(OPEN);
+    const person = participant(72, '12');
+
+    await openRegistration(page);
+
+    // Three fields, and no guardian field has appeared alongside them.
+    await expect(page.getByLabel('Nome completo')).toBeVisible();
+    await expect(page.getByLabel('Idade')).toBeVisible();
+    await expect(page.getByLabel('Celular')).toBeVisible();
+    await expect(page.getByText(/respons[\u00e1a]vel/i)).toHaveCount(0);
+
+    await fillForm(page, person);
+    await awaitToken(page);
+    await submit(page);
+
+    await expectOutcome(page, 'confirmed', 'Inscrição confirmada!');
+
+    expect(await registrationsFor(person.e164)).toEqual([
+      { status: 'confirmed', fullName: person.name, age: 12, waitlistRank: null },
+    ]);
+  });
+});
 
 /* ================================================================================================
  * A tampered client

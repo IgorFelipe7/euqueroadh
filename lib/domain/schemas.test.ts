@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AGE_BELOW_MINIMUM_MESSAGE,
+  ORGANIZATION_EMAIL,
+  PUBLIC_AGE_MIN,
+  adminAgeSchema,
   ageSchema,
   fieldErrors,
   inviteInputSchema,
@@ -76,7 +80,7 @@ describe('nameSchema', () => {
 
 describe('ageSchema', () => {
   it.each([
-    ['1', 1],
+    ['12', 12],
     ['18', 18],
     ['120', 120],
     [' 25 ', 25],
@@ -85,9 +89,39 @@ describe('ageSchema', () => {
     expect(ageSchema.parse(input)).toBe(expected);
   });
 
-  it('rejects 0 and 121, the boundaries just outside the range', () => {
+  it('rejects 0 and 121, the boundaries just outside the technical range', () => {
     expect(messageFor(ageSchema, '0')).toBe('Informe uma idade válida.');
     expect(messageFor(ageSchema, '121')).toBe('Informe uma idade válida.');
+  });
+
+  /*
+   * The online eligibility policy. A typo and an ineligible age are deliberately different
+   * messages: one is a correction, the other is a redirection to a human channel.
+   */
+  it('accepts exactly the minimum: the floor is inclusive', () => {
+    expect(ageSchema.parse(String(PUBLIC_AGE_MIN))).toBe(PUBLIC_AGE_MIN);
+  });
+
+  it.each(['11', '9', '1'])('sends %s to the organization rather than calling it invalid', (input) => {
+    expect(messageFor(ageSchema, input)).toBe(AGE_BELOW_MINIMUM_MESSAGE);
+  });
+
+  it('names the contact address in the under-age message, so there is somewhere to go', () => {
+    expect(AGE_BELOW_MINIMUM_MESSAGE).toContain(ORGANIZATION_EMAIL);
+    expect(AGE_BELOW_MINIMUM_MESSAGE).toContain(String(PUBLIC_AGE_MIN));
+  });
+
+  it('applies the floor inside the whole-form parse, not only field by field', () => {
+    const result = registrationInputSchema.safeParse({
+      name: 'Ana Souza',
+      age: '11',
+      phone: '(19) 99123-4567',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(fieldErrors(result.error).age).toBe(AGE_BELOW_MINIMUM_MESSAGE);
+    }
   });
 
   it('rejects an empty value with the "informe" message', () => {
@@ -106,6 +140,30 @@ describe('ageSchema', () => {
   it('rejects digits that are not ASCII digits', () => {
     // Arabic-Indic digits pass Number() but are not what the numeric keypad produces.
     expect(messageFor(ageSchema, '١٨')).toBe('Informe uma idade válida.');
+  });
+});
+
+/*
+ * An administrator's correction is held to the technical bounds, not the online floor: fixing `81`
+ * typed as `18` is recording what is true, and an existing record is not a new online registration.
+ * `edit_registration()` applies the identical 1-120 range server-side.
+ */
+describe('adminAgeSchema', () => {
+  it.each([
+    ['1', 1],
+    ['11', 11],
+    ['120', 120],
+  ])('accepts %s, below the public floor', (input, expected) => {
+    expect(adminAgeSchema.parse(input)).toBe(expected);
+  });
+
+  it('still refuses values outside the technical bounds', () => {
+    expect(messageFor(adminAgeSchema, '0')).toBe('Informe uma idade válida.');
+    expect(messageFor(adminAgeSchema, '121')).toBe('Informe uma idade válida.');
+  });
+
+  it('asks for the value when it is missing', () => {
+    expect(messageFor(adminAgeSchema, '')).toBe('Informe a idade.');
   });
 });
 

@@ -6,7 +6,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(101);
+select plan(107);
 
 create temp table acl_matrix (
   signature      text primary key,
@@ -25,6 +25,7 @@ insert into acl_matrix values
   ('edit_registration(uuid,text,smallint,text)',                                true,  true,  false, true),
   ('cancel_registration(uuid)',                                                 true,  true,  false, true),
   ('promote_from_waitlist(uuid,integer)',                                       true,  true,  false, true),
+  ('promote_registration(uuid)',                                                true,  true,  false, true),
   ('update_event_settings(uuid,integer,boolean,registration_state,bigint)',     true,  true,  false, true),
   ('delete_registration(uuid)',                                                 true,  true,  false, true),
   ('purge_event_registrations(uuid,bigint)',                                    true,  true,  false, true),
@@ -51,7 +52,7 @@ create temp view routines as
    where n.nspname = 'public';
 
 -- --------------------------------------------------------------- inventory ----
-select is((select count(*)::int from acl_matrix), 16, 'the matrix lists sixteen routines');
+select is((select count(*)::int from acl_matrix), 17, 'the matrix lists seventeen routines');
 select set_eq(
   'select signature from routines',
   'select signature from acl_matrix',

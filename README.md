@@ -27,6 +27,27 @@ npm run dev
 | `npm run db:test` | The database suites: pgTAP, then the Node concurrency and authorization suites |
 | `npm run test:e2e` | Playwright, against a production build and the local database |
 
+## The admin area
+
+`/admin` is the operational surface: a dashboard, the registration list, event settings and the
+team page. It is light where the public page is dark, dense where the public page is generous, and
+still where the public page is choreographed — it is a tool, not a showcase
+([`docs/ADMIN-SPEC.md`](./docs/ADMIN-SPEC.md)).
+
+Two rules hold everywhere in it and are worth knowing before changing anything:
+
+- **Every mutation goes through a `SECURITY DEFINER` RPC**, called with the administrator's own JWT.
+  There is no direct table write anywhere in the application, and there cannot be: `authenticated`
+  holds `SELECT` and nothing else on every table. The RPC authorizes, locks, mutates and writes its
+  audit record in one transaction.
+- **`assertAdmin()` is the first statement of every Server Action and Route Handler.** A layout
+  check does not cover the actions declared beneath it, and `proxy.ts` is a session refresher rather
+  than a boundary.
+
+The first administrator is provisioned by hand — invited from the Supabase dashboard, then inserted
+into `admin_users` — because no self-service path may exist. Everyone after that is invited from
+`/admin/equipe`.
+
 ## Environment
 
 Every variable is listed in [`.env.example`](./.env.example) and validated by `lib/env.ts`, the only

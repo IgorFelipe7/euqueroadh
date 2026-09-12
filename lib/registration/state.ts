@@ -12,6 +12,7 @@
  * touches the environment, the database or a secret.
  */
 import type { RegistrationOutcome } from '@/lib/domain/outcomes';
+import { PUBLIC_AGE_MIN } from '@/lib/domain/schemas';
 
 /** The three fields, and nothing else. Adding a fourth is a product decision, not a code change. */
 export const REGISTRATION_FIELDS = ['name', 'age', 'phone'] as const;
@@ -73,7 +74,9 @@ export const FIELD_COPY: Readonly<
   Record<RegistrationField, { readonly label: string; readonly hint: string | null }>
 > = {
   name: { label: 'Nome completo', hint: null },
-  age: { label: 'Idade', hint: 'Sua idade em anos' },
+  // The floor is stated up front rather than only on rejection: someone under 12 should learn it
+  // before typing a phone number, not after (PRODUCT-SPEC.md section 12.1).
+  age: { label: 'Idade', hint: `Sua idade em anos. A partir de ${PUBLIC_AGE_MIN} anos.` },
   phone: { label: 'Celular', hint: 'Com DDD. Ex.: (19) 99999-9999' },
 };
 

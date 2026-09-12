@@ -22,6 +22,7 @@ Four destinations. No sub-navigation, no settings-within-settings.
 | `/admin/inscricoes` | `Inscrições` | The full list: search, filter, sort, per-person actions, export |
 | `/admin/configuracoes` | `Configurações` | Capacity, waitlist, registrations open/closed |
 | `/admin/equipe` | `Equipe` | Invite, deactivate and remove administrators |
+| `/admin/auditoria` | — | The stored audit trail, read-only. Reached from `Equipe`, deliberately **not** a fifth tab (§ 10) |
 | `/admin/entrar` | — | Sign-in (public route) |
 | `/admin/sem-acesso` | — | Signed in, but not an authorized administrator |
 
@@ -620,6 +621,15 @@ from:
 - An admin API, webhooks, integrations.
 - A theme switcher.
 
-The audit log is **stored** but not surfaced as a browsable admin page in V1. It exists to answer
-questions after the fact — read via SQL when needed — and giving it a UI would add a fifth
-destination that nobody would visit during normal operation.
+The audit log is **stored** and is not a navigation destination. The reasoning above was about the
+*tab bar*, not about the data, and it stands: a fifth tab nobody opens during normal operation is a
+cost. What was added in Phase 6 is `/admin/auditoria`, linked from `Equipe` — so "who changed the
+capacity, and when?" has an answer that does not require someone with SQL access at ten in the
+evening. It is read-only by construction: `record_admin_action` is granted to no role at all.
+
+**`Confirmar vaga` on one named person** (§ 4.4) is implemented by `promote_registration(uuid)`
+(migration `20260912091000_promote_registration.sql`), a sibling of `promote_from_waitlist` with the
+identical six-step shape. The bulk routine takes the N oldest and cannot express "this person, out of
+order"; a direct table write could not carry the capacity check and the audit record in one
+transaction. Both write the same `registration.promoted` action, distinguished by `manual: true` in
+the metadata.

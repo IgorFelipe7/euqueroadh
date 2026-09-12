@@ -3,10 +3,13 @@
  *
  * **This page is deliberately incomplete, and says so on its face.**
  *
- * Three facts a privacy notice must carry are not yet known: which of the three `REALIZAÇÃO`
- * entities is the data controller (Q2), what channel a participant uses to exercise their rights
- * (Q3), and how long registration data is kept after the event (Q4). DECISIONS.md records a
- * recommended default for each and marks all three as **blocking launch**.
+ * Two facts a privacy notice must carry are still not known: which of the three `REALIZAÇÃO`
+ * entities is the data controller (Q2), and how long registration data is kept after the event
+ * (Q4). DECISIONS.md records a recommended default for each and marks both as **blocking launch**.
+ *
+ * Q3 — the channel a participant uses to exercise their rights — **has been answered**:
+ * `contato@euqueroadh.com`, the organization's published address. It is stated below as a fact
+ * rather than as a pending item. Q2 and Q4 are not, and are not invented here.
  *
  * Inventing them would be the worst possible outcome: a fabricated controller and a fabricated
  * retention period read exactly like real ones, and nobody would ever come back to check. So this
@@ -25,6 +28,7 @@ import Link from 'next/link';
 
 import { Grain } from '@/components/site/grain';
 import { CTA_TERTIARY } from '@/components/site/cta';
+import { ORGANIZATION_EMAIL, PUBLIC_AGE_MIN } from '@/lib/domain/schemas';
 
 export const metadata: Metadata = {
   title: 'Como usamos seus dados',
@@ -71,11 +75,10 @@ export default function PrivacyNotice() {
             Esta página ainda não está completa
           </h2>
           <p className="text-body mt-3 text-text-secondary">
-            Três informações dependem de uma definição da organização e ainda não foram publicadas:
+            Duas informações dependem de uma definição da organização e ainda não foram publicadas:
           </p>
           <ul className="text-body mt-3 flex list-disc flex-col gap-2 pl-5 text-text-secondary">
             <li>qual das organizações responde legalmente pelos dados;</li>
-            <li>o canal de contato para pedir correção ou exclusão dos seus dados;</li>
             <li>por quanto tempo os dados são guardados depois do evento.</li>
           </ul>
           <p className="text-body mt-3 text-text-secondary">
@@ -93,6 +96,15 @@ export default function PrivacyNotice() {
           <p>
             Não pedimos e-mail, CPF, data de nascimento, endereço nem qualquer outro dado. Não há
             cadastro, não há senha e não existe conta de participante.
+          </p>
+          <p>
+            A inscrição pelo site é para pessoas de {PUBLIC_AGE_MIN} anos ou mais. Para
+            participantes mais novos, a inscrição é tratada diretamente pela organização pelo
+            e-mail{' '}
+            <a href={`mailto:${ORGANIZATION_EMAIL}`} className={CTA_TERTIARY}>
+              {ORGANIZATION_EMAIL}
+            </a>
+            , e nenhum dado é coletado por este site.
           </p>
         </Article>
 
@@ -130,8 +142,12 @@ export default function PrivacyNotice() {
 
         <Article title="Correção e exclusão" id="direitos">
           <p>
-            Você pode pedir a correção ou a exclusão da sua inscrição a qualquer momento. O canal de
-            contato para isso é uma das informações que ainda serão publicadas nesta página.
+            Você pode pedir a correção ou a exclusão da sua inscrição a qualquer momento pelo
+            e-mail{' '}
+            <a href={`mailto:${ORGANIZATION_EMAIL}`} className={CTA_TERTIARY}>
+              {ORGANIZATION_EMAIL}
+            </a>
+            .
           </p>
           <p>
             Para proteger quem já está inscrito, reenviar o formulário com o mesmo número não altera

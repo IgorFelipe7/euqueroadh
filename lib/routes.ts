@@ -11,6 +11,11 @@
 export const ROUTES = {
   publicHome: '/',
   adminHome: '/admin',
+  adminRegistrations: '/admin/inscricoes',
+  adminExport: '/admin/inscricoes/exportar',
+  adminSettings: '/admin/configuracoes',
+  adminTeam: '/admin/equipe',
+  adminAudit: '/admin/auditoria',
   adminSignIn: '/admin/entrar',
   adminNoAccess: '/admin/sem-acesso',
   adminSession: '/admin/sessao',

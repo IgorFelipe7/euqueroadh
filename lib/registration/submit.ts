@@ -172,6 +172,7 @@ const LOG_EVENT_BY_OUTCOME = {
   confirmed: 'registration.confirmed',
   waitlisted: 'registration.waitlisted',
   already_registered: 'registration.duplicate',
+  age_not_eligible: 'registration.age_not_eligible',
   full: 'registration.full',
   closed: 'registration.closed',
 } as const satisfies Record<string, RegistrationLogFields['event']>;

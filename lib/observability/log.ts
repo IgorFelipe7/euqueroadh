@@ -105,6 +105,8 @@ export type RegistrationEvent =
   | 'registration.confirmed'
   | 'registration.waitlisted'
   | 'registration.duplicate'
+  /** Refused by `events.min_age`. Nothing was stored, and the age itself is never logged. */
+  | 'registration.age_not_eligible'
   | 'registration.full'
   | 'registration.closed'
   | 'registration.infrastructure_error';

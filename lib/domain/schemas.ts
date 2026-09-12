@@ -13,8 +13,35 @@ import { z } from 'zod';
 import { normalizeMobile } from './phone';
 
 export const NAME_MAX_LENGTH = 120;
+
+/**
+ * The technical plausibility bounds. They match `registrations.reg_age_range` and are the bounds an
+ * **administrator's correction** is held to, because correcting a record is not registering online.
+ */
 export const AGE_MIN = 1;
 export const AGE_MAX = 120;
+
+/**
+ * The **online eligibility floor** — the operating policy answer to DECISIONS.md Q7.
+ *
+ * Someone younger than this does not complete the public flow; they are directed to the
+ * organization's e-mail address instead. Deliberately not a parental-consent checkbox: the product
+ * collects three fields, and adding a guardian field to satisfy a tick box would collect more
+ * personal data about a child, not less.
+ *
+ * This constant is the *client and Server Action* half of the rule. The authority is
+ * `events.min_age`, checked inside `register_for_event()` under the event row lock, so a direct
+ * POST that skips every schema still cannot store an ineligible registration.
+ */
+export const PUBLIC_AGE_MIN = 12;
+
+/** The organization's published contact address (launch brief). */
+export const ORGANIZATION_EMAIL = 'contato@euqueroadh.com';
+
+/** One sentence, used by the field error, the outcome panel and the field hint alike. */
+export const AGE_BELOW_MINIMUM_MESSAGE =
+  `A inscrição online é para ${PUBLIC_AGE_MIN} anos ou mais. ` +
+  `Para participantes mais novos, fale com a organização: ${ORGANIZATION_EMAIL}`;
 
 const WHITESPACE_RUN = /\s+/g;
 
@@ -43,8 +70,13 @@ export const nameSchema = z
   );
 
 /**
- * A technical plausibility bound, not an eligibility rule — no business age restriction exists in
- * the source material. Accepts the string an `inputmode="numeric"` field produces.
+ * The public field. Accepts the string an `inputmode="numeric"` field produces, and applies the
+ * eligibility floor with its own message, so someone who is too young reads where to go rather
+ * than `Informe uma idade válida.`
+ *
+ * The two rules are kept distinct on purpose: a typo (`0`, `250`) is a correction, and an
+ * ineligible age is a redirection. Collapsing them into one message would tell a ten-year-old that
+ * their age is invalid, which is both untrue and unhelpful.
  */
 export const ageSchema = z
   .union([z.string(), z.number()], { error: 'Informe sua idade.' })
@@ -57,6 +89,43 @@ export const ageSchema = z
     }
 
     // Deliberately strict: `18a`, `1.5` and `1e2` are typing accidents, not ages.
+    if (!/^\d+$/.test(raw)) {
+      ctx.addIssue({ code: 'custom', message: 'Informe uma idade válida.' });
+      return z.NEVER;
+    }
+
+    const age = Number(raw);
+
+    if (age < AGE_MIN || age > AGE_MAX) {
+      ctx.addIssue({ code: 'custom', message: 'Informe uma idade válida.' });
+      return z.NEVER;
+    }
+
+    if (age < PUBLIC_AGE_MIN) {
+      ctx.addIssue({ code: 'custom', message: AGE_BELOW_MINIMUM_MESSAGE });
+      return z.NEVER;
+    }
+
+    return age;
+  });
+
+/**
+ * The same field for an **administrator's correction** (ADMIN-SPEC.md section 4.4).
+ *
+ * It stops at the technical bounds and does not apply the online floor: an organizer fixing `81`
+ * typed as `18` is recording what is true, and a record that already exists is not a new online
+ * registration. `edit_registration()` validates the identical 1–120 range server-side.
+ */
+export const adminAgeSchema = z
+  .union([z.string(), z.number()], { error: 'Informe a idade.' })
+  .transform((value, ctx) => {
+    const raw = typeof value === 'number' ? String(value) : value.trim();
+
+    if (raw.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'Informe a idade.' });
+      return z.NEVER;
+    }
+
     if (!/^\d+$/.test(raw)) {
       ctx.addIssue({ code: 'custom', message: 'Informe uma idade válida.' });
       return z.NEVER;

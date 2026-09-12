@@ -9,18 +9,17 @@
  * and must never be served from a cache that also served someone else's.
  *
  * **Light scheme.** The public page is dark and carries the event's identity; the admin is a tool
- * used for long stretches, sometimes in daylight at a venue door, sometimes printed (D12). The full
- * admin chrome — sidebar, tab bar, the four destinations — is Phase 6; this is the minimum that
- * makes the sign-in and the protected placeholder legible.
+ * used for long stretches, sometimes in daylight at a venue door, sometimes printed (D12). The
+ * `data-admin` attribute is what selects the light palette, the readable focus ring and the
+ * scroll margins in `globals.css` — scoped to this subtree, so the two surfaces cannot drift into
+ * each other. The chrome itself (sidebar, tab bar) belongs to the protected layout, because the
+ * sign-in page has no navigation.
  */
 export const dynamic = 'force-dynamic';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="min-h-dvh bg-white text-ink-900"
-      style={{ colorScheme: 'light', backgroundColor: '#f6f7fb' }}
-    >
+    <div data-admin className="min-h-dvh bg-admin-field text-admin-ink">
       {children}
     </div>
   );

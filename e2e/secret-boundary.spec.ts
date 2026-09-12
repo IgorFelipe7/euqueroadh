@@ -70,7 +70,8 @@ test('an administrator session never serialises the key or its tokens into the p
 
   await signIn(page, email);
   await page.waitForURL(/\/admin$/);
-  await expect(page.getByRole('heading', { name: 'Área de organizadores' })).toBeVisible();
+  // A dashboard-only string, so this waits for the real admin rather than for any page at all.
+  await expect(page.getByText('Vagas livres')).toBeVisible();
 
   const cookies = await authCookies(page);
   expect(cookies.length).toBeGreaterThan(0);

@@ -121,6 +121,7 @@ const ROUTINE_MATRIX: { name: string; args: Record<string, unknown> }[] = [
     name: 'promote_from_waitlist',
     args: { p_event_id: '00000000-0000-0000-0000-000000000000', p_count: 1 },
   },
+  { name: 'promote_registration', args: { p_registration_id: '00000000-0000-0000-0000-000000000000' } },
   {
     name: 'update_event_settings',
     args: {

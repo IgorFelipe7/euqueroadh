@@ -468,6 +468,16 @@ Server Action without a session is rejected. Axe on every admin route including 
 
 **Exit criteria.** An organizer can run the event end to end from a phone.
 
+**Delivered beyond the plan above, and why:**
+
+- `promote_registration(uuid)` (migration 12). ADMIN-SPEC.md § 4.4 specifies `Confirmar vaga` on a
+  named person, out of queue order; `promote_from_waitlist(event, count)` takes the N oldest and
+  cannot express it. A direct table write could not carry the capacity check and the audit record in
+  one transaction, so the action is a sibling RPC with the identical six-step shape.
+- `/admin/auditoria`, linked from `Equipe` rather than added to the tab bar (ADMIN-SPEC.md § 10).
+- The age policy of DECISIONS.md Q7, implemented across the database, the schemas, the Server Action
+  and the public copy (migration 11).
+
 ---
 
 ## Phase 7 — Hardening and launch
@@ -503,10 +513,10 @@ block going live. Each maps to a question in [DECISIONS.md](./DECISIONS.md).
 | # | Gate | Blocks | Owner |
 | --- | --- | --- | --- |
 | 1 | **Production SMTP configured** and verified by a real administrator sign-in (Q5) | Admin sign-in in production. Development uses the local mail catcher. | Organizers + implementer |
-| 2 | **`/privacidade` published** with a named data controller (Q2), a working contact channel (Q3) and a stated retention period (Q4) | Lawful collection | Organizers |
-| 3 | **Minors decision recorded** — whether under-18s are expected, whether any age limit applies, and what privacy handling the organizers determined is appropriate (Q8, [PRODUCT-SPEC.md § 12.1](./PRODUCT-SPEC.md)) | Lawful collection. **Not legal advice** — the specification requires an answer, not a particular answer. | Organizers |
+| 2 | **`/privacidade` published** with a named data controller (Q2) and a stated retention period (Q4). The contact channel (Q3) is answered and published: `contato@euqueroadh.com`. | Lawful collection | Organizers |
+| 3 | **Minors decision recorded** — whether under-18s are expected, and what privacy handling the organizers determined is appropriate (Q8, [PRODUCT-SPEC.md § 12.1](./PRODUCT-SPEC.md)). The age-limit half is **answered and implemented**: online registration is 12 and over, enforced by `events.min_age`, with under-12s directed to `contato@euqueroadh.com`. | Lawful collection. **Not legal advice** — the specification requires an answer, not a particular answer. | Organizers |
 | 4 | **Real capacity configured** and registrations deliberately opened (Q6) | Registration. The event is seeded `closed` with `capacity = 0` and refuses to open until this is done, so forgetting fails safe. | Organizers |
-| 5 | Contact channel wired into the duplicate screen, the `<noscript>` message and the privacy page (Q3) | Three strings degrade without it | Implementer |
+| 5 | ~~Contact channel wired in (Q3)~~ — **done**: `ORGANIZATION_EMAIL` in `lib/domain/schemas.ts` feeds the privacy notice and the under-12 panel | — | Implementer |
 
 Gate 4 deserves emphasis: it is the one gate the system enforces for you. There is no way to ship an
 event that silently collects registrations against a placeholder capacity.

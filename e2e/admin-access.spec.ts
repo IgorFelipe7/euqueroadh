@@ -18,7 +18,12 @@ import {
   testEmail,
 } from './support/local';
 
-const PROTECTED_MARKER = 'Área de organizadores';
+/**
+ * A string that appears on the dashboard and nowhere else — not on the sign-in page, not on
+ * `/admin/sem-acesso`, and not on the public site. Asserting its *absence* is how each test proves
+ * that no protected content leaked into a response that should not carry it.
+ */
+const PROTECTED_MARKER = 'Vagas livres';
 
 test.describe('Phase 3 — the admin boundary', () => {
   test('an anonymous visitor never receives protected content', async ({ page, request }) => {
@@ -72,8 +77,9 @@ test.describe('Phase 3 — the admin boundary', () => {
     await signIn(page, email);
 
     await page.waitForURL(/\/admin$/);
-    await expect(page.getByRole('heading', { name: PROTECTED_MARKER })).toBeVisible();
-    await expect(page.getByTestId('audit-count')).toBeVisible();
+    await expect(page.getByText(PROTECTED_MARKER)).toBeVisible();
+    // The four destinations are rendered, which is the layout's own proof that the admin loaded.
+    await expect(page.getByRole('link', { name: 'Inscrições' }).first()).toBeVisible();
 
     // The session exists, is HttpOnly, and is unreadable from page JavaScript.
     const cookies = await authCookies(page);
@@ -113,7 +119,7 @@ test.describe('Phase 3 — the admin boundary', () => {
 
     await signIn(page, email);
     await page.waitForURL(/\/admin$/);
-    await expect(page.getByRole('heading', { name: PROTECTED_MARKER })).toBeVisible();
+    await expect(page.getByText(PROTECTED_MARKER)).toBeVisible();
 
     const before = await authCookies(page);
     expect(before.length).toBeGreaterThan(0);

@@ -51,6 +51,43 @@
   --radius-field: 12px;
 
   /*
+   * The admin's own radii (VISUAL-DIRECTION.md section 12). The admin is a dense tool, not the
+   * event's identity: 8px panels and 6px controls, no pills. They are separate tokens rather than
+   * a reuse of the two above precisely so that a change to the public page's rounding cannot
+   * silently restyle the tool an organizer uses at the venue door.
+   */
+  --radius-admin-panel: 8px;
+  --radius-admin-control: 6px;
+
+  /*
+   * The admin palette — light, because the admin is used for long stretches, sometimes in daylight
+   * and sometimes printed (section 12). It does not reuse the public dark tokens: `ink-900` on
+   * white would be a different design decision wearing the same name.
+   *
+   * `admin-blue` is `#0F4CB0`, the public `blue-500` darkened to clear 4.5:1 on white. The three
+   * status pairs are the table in section 12; every one of them is ≥ 4.5:1 on its own fill, and
+   * every one of them is always paired with a text label, never used as colour alone.
+   */
+  --color-admin-field: #f6f7fb;
+  --color-admin-surface: #ffffff;
+  --color-admin-ink: #111726;
+  --color-admin-muted: #5b6478;
+  --color-admin-line: #e2e5ee;
+  --color-admin-line-strong: #c3c9d8;
+  --color-admin-blue: #0f4cb0;
+  --color-admin-blue-dark: #0b3a87;
+  --color-admin-blue-soft: #e8effb;
+  --color-admin-danger: #a3122a;
+  --color-admin-danger-soft: #fdeaed;
+
+  --color-status-confirmed: #0a6b3d;
+  --color-status-confirmed-soft: #e6f5ec;
+  --color-status-waitlisted: #8a5000;
+  --color-status-waitlisted-soft: #fff4e0;
+  --color-status-cancelled: #5b6478;
+  --color-status-cancelled-soft: #f0f1f5;
+
+  /*
    * Type scale (section 6.2). Fluid via clamp(); the mobile value is the floor.
    * The variable font's `wdth` axis is applied at the point of use — it is a per-role optical
    * setting, not something the text utilities can carry.
@@ -281,6 +318,40 @@
   :focus-visible {
     outline: 2px solid var(--color-sky-300);
     outline-offset: 2px;
+  }
+
+  /*
+   * The admin subtree, which is a light tool rather than the dark public page
+   * (VISUAL-DIRECTION.md section 12). Scoped to `[data-admin]` on the admin layout's own root, so
+   * the two surfaces cannot drift into each other: nothing here reaches the public page, and the
+   * public `body` colours above do not decide what an organizer sees.
+   *
+   * The focus ring is restated because `sky-300` is 1.7:1 on white — a ring nobody can see is the
+   * same as no ring at all (section 13, item 6).
+   */
+  [data-admin] {
+    color-scheme: light;
+    background-color: var(--color-admin-field);
+    color: var(--color-admin-ink);
+  }
+
+  [data-admin] ::selection {
+    background-color: var(--color-admin-blue-soft);
+    color: var(--color-admin-ink);
+  }
+
+  [data-admin] :focus-visible {
+    outline: 2px solid var(--color-admin-blue);
+    outline-offset: 2px;
+  }
+
+  /*
+   * A focused control inside a scrolled region must never sit under the sticky header or behind the
+   * bottom tab bar (WCAG 2.2 SC 2.4.11). `scroll-margin` is the platform's own answer and costs
+   * nothing.
+   */
+  [data-admin] :is(a, button, input, select, textarea, [tabindex]) {
+    scroll-margin-block: 6rem;
   }
 
   /* Long Portuguese words never hyphenate at display size; prose may (section 6.4). */
