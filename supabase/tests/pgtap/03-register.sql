@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(41);
+select plan(53);
 
 -- A closed event with free seats, and an open one with two seats.
 insert into public.events (id, slug, title, starts_at, capacity, registration_state, waitlist_enabled)
@@ -38,16 +38,36 @@ select ok((select waitlist_rank is null from public.registrations where phone_e1
           'a confirmed registration has no queue position');
 
 -- --------------------------------------------------------------- duplicate ----
+-- Migration 16: the duplicate key is the PERSON — (event, canonical phone, canonical name) — not the
+-- telephone number, because one household legitimately shares one number.
 select is(
   (select outcome from public.register_for_event(
-     '55555555-5555-5555-5555-555555555555', 'Nome Diferente', 44::smallint, '+5519991240001')),
+     '55555555-5555-5555-5555-555555555555', 'Ana Souza', 44::smallint, '+5519991240001')),
   'already_registered',
-  'the same phone returns already_registered');
+  'the same person returns already_registered');
 select is(
   (select status from public.register_for_event(
-     '55555555-5555-5555-5555-555555555555', 'Nome Diferente', 44::smallint, '+5519991240001')),
+     '55555555-5555-5555-5555-555555555555', 'Ana Souza', 44::smallint, '+5519991240001')),
   'confirmed'::public.registration_status,
   'and reports the EXISTING status, so a double tap gets a coherent answer');
+
+-- Normalization is part of the rule. Each of these is Ana Souza.
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'ana souza', 20::smallint, '+5519991240001')),
+  'already_registered', 'case is not a new person');
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', '  ANA   SOUZA  ', 20::smallint, '+5519991240001')),
+  'already_registered', 'nor is whitespace');
+
+-- AGE IS NOT PART OF THE KEY, deliberately (migration 16 states the reasoning). A person who mistypes
+-- their age and resubmits must be answered `already_registered`, not given a second seat.
+select is(
+  (select outcome from public.register_for_event(
+     '55555555-5555-5555-5555-555555555555', 'Ana Souza', 19::smallint, '+5519991240001')),
+  'already_registered', 'nor is a different age - an age typo must not buy a second seat');
+
 select is((select count(*)::int from public.registrations where phone_e164 = '+5519991240001'),
           1, 'no second row is created - the operation is idempotent');
 select is((select full_name from public.registrations where phone_e164 = '+5519991240001'),
@@ -56,6 +76,7 @@ select is((select full_name from public.registrations where phone_e164 = '+55199
           'could otherwise rewrite that person''s registration)');
 select is((select age from public.registrations where phone_e164 = '+5519991240001'),
           20::smallint, 'nor the stored age');
+
 
 -- ------------------------------------------------------ filling to capacity ----
 select is(
@@ -224,6 +245,55 @@ select throws_ok(
      where id = '55555555-5555-5555-5555-555555555555'$$,
   '23514', null,
   'and an inverted policy is unrepresentable');
+
+-- ================================================================================================
+-- THE SHARED TELEPHONE NUMBER — migration 16.
+--
+-- On its own event, deliberately: this is the one section that ADDS rows for a number the sections
+-- above have already reasoned about, and folding it into the capacity narrative there would make
+-- every later count depend on a rule change rather than on the rule being tested.
+-- ================================================================================================
+insert into public.events (id, slug, title, starts_at, capacity, registration_state, waitlist_enabled)
+values ('66666666-6666-6666-6666-666666666666', 'evt-familia', 'Evento familia',
+        '2026-09-19T19:00:00-03:00', 6, 'open', true);
+
+select is(
+  (select outcome from public.register_for_event(
+     '66666666-6666-6666-6666-666666666666', 'Ana Souza', 15::smallint, '+5519991249000')),
+  'confirmed', 'the first person on the family telephone is confirmed');
+select is(
+  (select outcome from public.register_for_event(
+     '66666666-6666-6666-6666-666666666666', 'Bruno Souza', 17::smallint, '+5519991249000')),
+  'confirmed', 'so is the second');
+select is(
+  (select outcome from public.register_for_event(
+     '66666666-6666-6666-6666-666666666666', 'Ana Beatriz Souza', 13::smallint, '+5519991249000')),
+  'confirmed', 'and the third, whose first name collides with the first person''s');
+select is(
+  (select outcome from public.register_for_event(
+     '66666666-6666-6666-6666-666666666666', 'Carla Souza', 19::smallint, '+5519991249000')),
+  'confirmed', 'and the fourth');
+select is(
+  (select outcome from public.register_for_event(
+     '66666666-6666-6666-6666-666666666666', 'Diego Souza', 21::smallint, '+5519991249000')),
+  'confirmed', 'and the fifth - six people on one number is the case this exists for');
+
+select is((select count(*)::int from public.registrations
+            where event_id = '66666666-6666-6666-6666-666666666666'
+              and phone_e164 = '+5519991249000' and status <> 'cancelled'),
+          5, 'five active registrations share one telephone number');
+select is((select confirmed_count from public.events where id = '66666666-6666-6666-6666-666666666666'),
+          5, 'the counter followed every one of them, so a shared number cannot oversell an event');
+
+-- And the exact same person, once more, is still refused.
+select is(
+  (select outcome from public.register_for_event(
+     '66666666-6666-6666-6666-666666666666', 'bruno  souza', 17::smallint, '+5519991249000')),
+  'already_registered', 'while the same person repeated is still exactly one registration');
+select is((select count(*)::int from public.registrations
+            where event_id = '66666666-6666-6666-6666-666666666666'
+              and phone_e164 = '+5519991249000' and status <> 'cancelled'),
+          5, 'and no sixth row appeared');
 
 select * from finish();
 rollback;

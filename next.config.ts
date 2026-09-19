@@ -68,6 +68,33 @@ const nextConfig: NextConfig = {
         source: '/((?!admin(?:/|$)).*)',
         headers: [{ key: 'Content-Security-Policy', value: publicContentSecurityPolicy }],
       },
+      /*
+       * The two guest self-service surfaces, plus the tokenized certificate they lead to.
+       *
+       * `no-store` because each of these responses is about **one person**: a check-in session's live
+       * capability, an identification form, or a named certificate. A shared CDN edge or a browser's
+       * back/forward cache holding any of them is the same class of failure `NO_STORE_HEADERS` exists
+       * to prevent in the admin, and the pages are `force-dynamic` so nothing is given up by saying so.
+       *
+       * `X-Robots-Tag` duplicates the `robots` metadata each page already sets. That is deliberate
+       * belt-and-braces: the meta tag is only honoured by a crawler that fetched and parsed the HTML,
+       * while the header also covers a response fetched as a subresource or by a crawler that indexes
+       * on headers alone.
+       */
+      {
+        source: '/presenca/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-cache, no-store, max-age=0, must-revalidate' },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+        ],
+      },
+      {
+        source: '/certificado/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-cache, no-store, max-age=0, must-revalidate' },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+        ],
+      },
     ];
   },
 };

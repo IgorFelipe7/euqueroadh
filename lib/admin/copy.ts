@@ -281,6 +281,65 @@ export const ADMIN_COPY = {
       'vaga confirmada antes.',
     hint: 'A presença define quem participa do sorteio e quem recebe certificado.',
   },
+
+  /**
+   * Self check-in at the venue — the launch brief's PART A.
+   *
+   * Every sentence here is operational rather than explanatory: the organizer reading it is standing
+   * at a door with a queue in front of them. The reassurance that matters is that the manual list
+   * below never goes away, which is why `fallback` is on the panel itself and not in a help page.
+   */
+  checkIn: {
+    title: 'Check-in do evento',
+    description: 'Deixe o QR na tela da entrada. Quem chega confirma a própria presença.',
+
+    stateOpen: 'Aberto',
+    stateClosed: 'Fechado',
+
+    open: 'Abrir check-in',
+    opening: 'Abrindo…',
+    close: 'Fechar check-in',
+    closing: 'Fechando…',
+    rotate: 'Gerar novo QR',
+    rotating: 'Gerando…',
+    showWall: 'Exibir QR em tela cheia',
+
+    opened: 'Check-in aberto. Exiba o QR na entrada.',
+    closed: 'Check-in fechado. O link público deixou de funcionar.',
+    alreadyClosed: 'O check-in já estava fechado.',
+    rotated: 'Novo QR gerado. O QR anterior deixou de funcionar.',
+
+    closedHint:
+      'Enquanto o check-in está fechado, ninguém confirma presença pelo celular. A lista abaixo '
+      + 'continua funcionando normalmente.',
+    openHint: (until: string) => `Este QR funciona até ${until}.`,
+    urlLabel: 'Endereço do check-in',
+
+    fallback:
+      'A lista abaixo continua sendo a forma de resolver exceções: sem internet, celular '
+      + 'descarregado, dados que não batem.',
+
+    /** The confirmations. Both actions invalidate a QR that people may already be looking at. */
+    confirmClose:
+      'Fechar o check-in? O QR que está na tela deixa de funcionar imediatamente.',
+    confirmRotate:
+      'Gerar um novo QR? O QR que está na tela deixa de funcionar imediatamente e precisa ser '
+      + 'substituído.',
+
+    /** The wall. No participant name ever appears on it (launch brief § 3). */
+    wall: {
+      title: 'Check-in',
+      arrived: 'Você chegou.',
+      confirm: 'Confirme sua presença.',
+      instruction: 'Aponte a câmera do seu celular',
+      countLabel: 'já chegaram',
+      countLabelSingular: 'já chegou',
+      exit: 'Sair',
+      fullscreen: 'Tela cheia',
+      exitFullscreen: 'Sair da tela cheia',
+      stale: 'Sem atualização',
+    },
+  },
   raffles: {
     title: 'Sorteio',
     description: 'Sorteios ao vivo entre as pessoas presentes.',

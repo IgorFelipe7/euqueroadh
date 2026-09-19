@@ -6,7 +6,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(159);
+select plan(196);
 
 create temp table acl_matrix (
   signature      text primary key,
@@ -52,7 +52,28 @@ insert into acl_matrix values
   ('new_certificate_token()',                                                   false, false, false, false),
   -- `get_certificate` mirrors register_for_event exactly: service_role ONLY, because the public
   -- certificate page renders on our own server and the browser never contacts Supabase (D4).
-  ('get_certificate(text)',                                                     true,  false, true,  false);
+  ('get_certificate(text)',                                                     true,  false, true,  false),
+
+  -- Person identity (migration 16).  `registration_identity_key` is granted to NOBODY and is not
+  -- SECURITY DEFINER: like `immutable_unaccent`, it is evaluated only by the table owner — as the
+  -- expression of registrations_active_person_uidx — and by the definer routines that match on it.
+  ('registration_identity_key(text)',                                           false, false, false, false),
+
+  -- Check-in sessions (migration 17).  `new_check_in_token` mirrors `new_certificate_token`: granted
+  -- to nobody, not a definer, evaluated only inside the routines below.
+  ('new_check_in_token()',                                                      false, false, false, false),
+  -- The two administrative session controls: definer, `authenticated` only, never service_role, and
+  -- each calls is_active_admin() first.
+  ('open_check_in_session(uuid,boolean)',                                       true,  true,  false, true),
+  ('close_check_in_session(uuid)',                                              true,  true,  false, true),
+
+  -- Public self check-in (migration 18) and the certificate portal (migration 19).  All three mirror
+  -- register_for_event and get_certificate exactly: service_role ONLY, because these are the public
+  -- paths and a grant to anon or authenticated would put Turnstile verification outside the only
+  -- route that reaches them.
+  ('get_check_in_session(text)',                                                true,  false, true,  false),
+  ('self_check_in(text,text,text,smallint)',                                    true,  false, true,  false),
+  ('find_certificate(text,text,smallint)',                                      true,  false, true,  false);
 
 create temp view routines as
   select p.oid,
@@ -71,7 +92,7 @@ create temp view routines as
    where n.nspname = 'public';
 
 -- --------------------------------------------------------------- inventory ----
-select is((select count(*)::int from acl_matrix), 26, 'the matrix lists twenty-six routines');
+select is((select count(*)::int from acl_matrix), 33, 'the matrix lists thirty-three routines');
 select set_eq(
   'select signature from routines',
   'select signature from acl_matrix',

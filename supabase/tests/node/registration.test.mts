@@ -144,13 +144,16 @@ test('a closed event refuses and stores nothing, whatever its capacity', async (
   });
 });
 
-test('the same phone twice yields already_registered and exactly one row', async () => {
+test('the same person twice yields already_registered and exactly one row', async () => {
   await withDb(async (db) => {
     const eventId = await createEvent(db, { capacity: 10 });
     const number = phone(1);
 
     const first = await register(eventId, 'Ana Souza', 17, number);
-    const second = await register(eventId, 'Outra Pessoa', 41, number);
+    // A different SPELLING and a different age, but the same person. Migration 16 keys the duplicate
+    // rule on the canonical name and deliberately leaves age out of it, so an age typo on a second
+    // attempt is answered `already_registered` rather than being given a second seat.
+    const second = await register(eventId, '  ana   SOUZA ', 41, number);
 
     assert.equal(first.outcome, 'confirmed');
     assert.equal(second.outcome, 'already_registered');
@@ -165,6 +168,33 @@ test('the same phone twice yields already_registered and exactly one row', async
       [eventId],
     );
     assert.deepEqual(rows, [{ full_name: 'Ana Souza', age: 17 }]);
+  });
+});
+
+test('different people may share one telephone number', async () => {
+  // The household case, and the reason the duplicate rule moved from the phone to the person: the
+  // audience is `PARA JOVENS`, and a family arriving together routinely has one phone between them.
+  await withDb(async (db) => {
+    const eventId = await createEvent(db, { capacity: 10 });
+    const number = phone(1);
+
+    assert.equal((await register(eventId, 'Ana Souza', 15, number)).outcome, 'confirmed');
+    assert.equal((await register(eventId, 'Bruno Souza', 17, number)).outcome, 'confirmed');
+    // A first name that collides with an existing one is still a different person.
+    assert.equal((await register(eventId, 'Ana Beatriz Souza', 13, number)).outcome, 'confirmed');
+
+    const { rows } = await db.query<{ full_name: string }>(
+      `select full_name from public.registrations
+        where event_id = $1 and phone_e164 = $2 and status <> 'cancelled'
+        order by created_at`,
+      [eventId, number],
+    );
+
+    assert.deepEqual(
+      rows.map((row) => row.full_name),
+      ['Ana Souza', 'Bruno Souza', 'Ana Beatriz Souza'],
+      'all three are registered against the one number',
+    );
   });
 });
 

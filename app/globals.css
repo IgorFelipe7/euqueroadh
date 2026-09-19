@@ -1564,6 +1564,269 @@
  * screenshot of a web page: the navigation and the actions are gone, the dark field actually prints
  * (browsers drop background colours unless asked), and the sheet is not split across two pages.
  */
+/* ==================================================================================================
+ * The check-in wall — launch brief PART D § 27.
+ *
+ * The second admin surface rendered for an AUDIENCE rather than for a reader, and therefore the second
+ * exception to "the admin is light" (D38 was the first, for the raffle stage). The exception stays
+ * narrow: nothing else in the admin darkens.
+ *
+ * It is held to the public page's own rules — one subject with room around it, depth from one light
+ * source, rationed colour, ornament that carries meaning. The composition is deliberately NOT the
+ * stage's: the stage has one subject in the middle of the frame, and this has three things that must
+ * all be legible at once, from different distances. A guest two metres away reads the QR; somebody
+ * crossing the room reads the number; anybody at all reads the date.
+ * ================================================================================================ */
+@layer components {
+  /*
+   * A fixed overlay rather than a route outside the protected layout: the authorization boundary stays
+   * exactly where it is, and the admin chrome is simply covered — the same choice `.u-stage` made.
+   */
+  .u-wall {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    overflow: hidden;
+    background-color: var(--color-ink-900);
+    color: var(--color-text-primary);
+  }
+
+  /*
+   * Three regions, and the layout is the one decision here that changes by width.
+   *
+   * On a phone or a portrait tablet the wall stacks: instruction, QR, count. On anything landscape and
+   * wide enough to project — which is every real use of this screen — the type sits left and the QR
+   * right, because a QR centred under a headline on a 16:9 frame leaves two columns of empty navy and
+   * forces the symbol smaller to fit the height.
+   *
+   * `100dvh`, not `100vh`: on a laptop driving a projector through a browser with visible chrome the
+   * two differ, and the difference is the bottom of the count.
+   */
+  .u-wall-grid {
+    position: relative;
+    display: grid;
+    height: 100dvh;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-content: center;
+    gap: clamp(1.5rem, 3vh, 3rem);
+    padding: clamp(1.25rem, 4vh, 3.5rem) clamp(1.25rem, 5vw, 5rem);
+  }
+
+  @media (width >= 64rem) and (orientation: landscape) {
+    .u-wall-grid {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+      grid-template-rows: minmax(0, 1fr) auto;
+      column-gap: clamp(2rem, 5vw, 6rem);
+    }
+
+    /* The instruction and the count share the left column; the QR spans both rows on the right. */
+    .u-wall-grid > :nth-child(2) {
+      grid-row: 1 / span 2;
+      grid-column: 2;
+    }
+
+    /* Height stops being the scarce axis once the symbol has a column of its own. */
+    .u-wall-qr {
+      width: min(78vmin, 34rem);
+    }
+  }
+
+  /*
+   * The headline, in the identity's weight jump — the same relationship `educação` has to `Financeira`
+   * on the banner. Two lines, forced, because "VOCÊ CHEGOU. / CONFIRME SUA PRESENÇA." is a statement
+   * followed by an instruction and letting them reflow together loses that.
+   */
+  .u-wall-headline {
+    display: flex;
+    flex-direction: column;
+    font-size: clamp(2rem, 5.5vw, 4.75rem);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+
+  /* The date lockup, at wall scale. Condensed numeral, expanded month, joined as one object. */
+  .u-wall-date {
+    display: flex;
+    align-items: baseline;
+    gap: 0.06em;
+    font-size: clamp(2.5rem, 7vw, 6rem);
+    line-height: 0.85;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-sky-300);
+    opacity: 0.85;
+  }
+
+  /*
+   * The QR's plate.
+   *
+   * White, because a scanner needs the symbol's own contrast and not the page's. The width is capped in
+   * `vmin` rather than `vw` so a tall narrow window cannot produce a code taller than the screen, and
+   * floored generously: below about 280px on a projected screen a phone two metres away stops resolving
+   * the modules, which is the failure this whole surface exists to avoid.
+   */
+  .u-wall-qr {
+    /*
+     * `40vh` is the third term, and it is the one that earns its place.
+     *
+     * In the STACKED layout the symbol shares the viewport's height with a headline, a date lockup,
+     * an instruction, the URL fallback and the count — and `.u-wall` clips, so a QR sized from width
+     * alone pushes the URL off the bottom of a portrait tablet. Measured at 768x1024: `78vmin` is
+     * 599px, which leaves nothing for the line underneath. The landscape rule below drops this term,
+     * because there the symbol spans both rows and height is not the scarce axis.
+     */
+    width: min(78vmin, 34rem, 40vh);
+    max-width: 100%;
+    padding: clamp(0.5rem, 1.2vmin, 1rem);
+    border-radius: var(--radius-panel);
+    background-color: #ffffff;
+    /*
+     * The one shadow in the repository, and it earns its place: the plate is a physical object held in
+     * front of a dark field, and on a projector a hard white rectangle on navy without any transition
+     * reads as a rendering artefact. Cheap — it never animates and never repaints.
+     */
+    box-shadow: 0 2.5rem 5rem -1rem rgb(0 0 0 / 0.55);
+  }
+
+  .u-wall-instruction {
+    font-size: clamp(1rem, 1.8vw, 1.5rem);
+    font-weight: 600;
+    text-align: center;
+    color: var(--color-text-primary);
+  }
+
+  /*
+   * The address under the QR. Monospaced digits are not wanted here — it is a URL, not a number — but
+   * it must never wrap mid-token, so it shrinks and, on the narrowest screens, scrolls rather than
+   * breaking a 27-character capability across two lines where somebody would mistype it.
+   */
+  .u-wall-url {
+    max-width: 100%;
+    overflow-x: auto;
+    font-size: clamp(0.8125rem, 1.1vw, 1rem);
+    text-align: center;
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .u-wall-count {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+
+  .u-wall-rail {
+    width: min(14rem, 45%);
+    height: auto;
+    margin-bottom: 0.25rem;
+  }
+
+  /*
+   * The number. The largest single glyph on the wall, and tabular so it does not jitter sideways as it
+   * passes 9, 99 and 199 — a count that shifts the layout every tenth arrival reads as unstable.
+   */
+  .u-wall-number {
+    font-size: clamp(4rem, 12vw, 11rem);
+    font-weight: 800;
+    line-height: 0.85;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+  }
+
+  .u-wall-count-label {
+    font-size: var(--text-micro-label);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  /* A failing poll says so in the label rather than by changing the number it can no longer vouch for. */
+  .u-wall-stale {
+    color: var(--color-gold-400);
+  }
+
+  /*
+   * The arrival, entire: the new value rises a short distance into place while the last bead settles.
+   * ~520ms, once, then nothing. Both are `transform`/`opacity` only, so the compositor does the work
+   * and a laptop driving a projector is not asked to repaint the largest glyph on screen.
+   */
+  .u-wall-number-arrive {
+    animation: u-wall-arrive 520ms var(--ease-rise) both;
+  }
+
+  .u-wall-bead {
+    animation: u-wall-bead 520ms var(--ease-settle) both;
+  }
+
+  /*
+   * The chrome layer's placement. The fade behaviour itself is `.u-stage-chrome`, reused rather than
+   * reimplemented — there is one rule in this repository for "controls that get out of the way".
+   */
+  .u-wall-chrome {
+    position: absolute;
+    right: clamp(1rem, 2vw, 2rem);
+    bottom: clamp(1rem, 2vh, 2rem);
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .u-wall-control {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    border-radius: 9999px;
+    border: 1px solid var(--color-border-strong);
+    padding-inline: 1.25rem;
+    font-size: var(--text-hint);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    background-color: color-mix(in srgb, var(--color-ink-800) 80%, transparent);
+    text-decoration: none;
+  }
+
+  .u-wall-control:hover {
+    border-color: var(--color-text-muted);
+    color: var(--color-text-primary);
+  }
+}
+
+@keyframes u-wall-arrive {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.18em, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes u-wall-bead {
+  from {
+    transform: translate3d(-26px, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/*
+ * Reduced motion: the final state, immediately.
+ *
+ * Not "a shorter animation" — the count still has to change, and it does, but nothing moves to announce
+ * it. This is the same treatment § 10.6 gives every other primitive on the site.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .u-wall-number-arrive,
+  .u-wall-bead {
+    animation: none;
+  }
+}
+
 @media print {
   @page {
     size: A4 landscape;

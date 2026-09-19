@@ -76,6 +76,9 @@ export async function resetActiveEvent(fixture: EventFixture): Promise<string> {
     // The counter trigger is the single writer of confirmed_count and waitlist_count, so deleting
     // the rows is what drives them back to zero — the fixture never writes a counter by hand.
     await db.query('delete from public.registrations where event_id = $1', [id]);
+    // A check-in session left open by a previous suite is a live public capability, and the suite
+    // after it would read it as its own. Sessions are scenery, so they are cleared outright.
+    await db.query('delete from public.check_in_sessions where event_id = $1', [id]);
     await db.query(
       `update public.events
           set capacity = $2,
@@ -211,5 +214,120 @@ export async function countRegistrations(): Promise<number> {
         where event_id = (select id from public.events where is_active limit 1)`,
     );
     return Number(rows[0].total);
+  });
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Self check-in and the certificate portal
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * Registers one synthetic person through the real allocation function.
+ *
+ * Never an `INSERT`: the counters, the ranks, the identity key and the constraints all have to move
+ * exactly as they would for a real registration, and a fixture that wrote the row directly would be
+ * testing a schema the application never produces.
+ */
+export async function registerPerson(
+  fullName: string,
+  age: number,
+  e164: string,
+): Promise<'confirmed' | 'waitlisted' | 'already_registered' | 'closed' | 'full'> {
+  const id = await activeEventId();
+
+  return withDb(async (db) => {
+    const { rows } = await db.query<{ outcome: string }>(
+      'select outcome from public.register_for_event($1, $2, $3::smallint, $4)',
+      [id, fullName, age, e164],
+    );
+    return rows[0].outcome as 'confirmed';
+  });
+}
+
+/** Marks a registration present, or absent, by the name the fixture gave it. */
+export async function setAttendanceByName(fullName: string, present: boolean): Promise<void> {
+  await withDb((db) =>
+    db.query(
+      `update public.registrations
+          set attended_at = case when $2 then coalesce(attended_at, now()) else null end
+        where event_id = (select id from public.events where is_active limit 1)
+          and full_name = $1`,
+      [fullName, present],
+    ),
+  );
+}
+
+/** Whether that person is recorded as having arrived — the assertion the UI's answer is checked against. */
+export async function isPresent(fullName: string): Promise<boolean> {
+  return withDb(async (db) => {
+    const { rows } = await db.query<{ present: boolean }>(
+      `select attended_at is not null as present from public.registrations
+        where event_id = (select id from public.events where is_active limit 1)
+          and full_name = $1`,
+      [fullName],
+    );
+    return rows[0]?.present === true;
+  });
+}
+
+/**
+ * Opens a check-in session directly, and returns its public token.
+ *
+ * Written as an `INSERT` rather than through `open_check_in_session()` for one reason: that routine
+ * is `SECURITY DEFINER` and begins with `is_active_admin()`, and this fixture runs on a plain
+ * PostgreSQL connection with no JWT. The admin path is exercised properly by the pgTAP suite and by
+ * the admin end-to-end suite; here the session is scenery, and what is under test is what a guest can
+ * do with the URL.
+ */
+export async function openCheckInSession(): Promise<string> {
+  const id = await activeEventId();
+
+  return withDb(async (db) => {
+    await db.query("update public.check_in_sessions set status = 'closed', closed_at = now() where event_id = $1 and status = 'open'", [id]);
+
+    const { rows } = await db.query<{ token: string }>(
+      `insert into public.check_in_sessions (event_id, token, expires_at)
+       values ($1, public.new_check_in_token(), now() + interval '12 hours')
+       returning token`,
+      [id],
+    );
+    return rows[0].token;
+  });
+}
+
+/** Closes every open session for the active event, which invalidates every copy of its URL. */
+export async function closeCheckInSessions(): Promise<void> {
+  await withDb((db) =>
+    db.query(
+      `update public.check_in_sessions set status = 'closed', closed_at = now()
+        where event_id = (select id from public.events where is_active limit 1)
+          and status = 'open'`,
+    ),
+  );
+}
+
+/** Removes every check-in session, so a suite hands the database back as it found it. */
+export async function purgeCheckInSessions(): Promise<void> {
+  await withDb((db) => db.query('delete from public.check_in_sessions'));
+}
+
+/** The certificate gate. `11-seed.sql` asserts the seeded value, so a suite must put it back. */
+export async function setCertificatesEnabled(enabled: boolean): Promise<void> {
+  await withDb((db) =>
+    db.query('update public.events set certificates_enabled = $1 where is_active', [enabled]),
+  );
+}
+
+/** That person's certificate token, for asserting where a successful lookup actually landed. */
+export async function certificateTokenFor(fullName: string): Promise<string> {
+  return withDb(async (db) => {
+    const { rows } = await db.query<{ certificate_token: string }>(
+      `select certificate_token from public.registrations
+        where event_id = (select id from public.events where is_active limit 1)
+          and full_name = $1`,
+      [fullName],
+    );
+    if (!rows[0]) throw new Error(`No registration named ${fullName}.`);
+    return rows[0].certificate_token;
   });
 }

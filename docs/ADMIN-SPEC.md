@@ -645,3 +645,71 @@ identical six-step shape. The bulk routine takes the N oldest and cannot express
 order"; a direct table write could not carry the capacity check and the audit record in one
 transaction. Both write the same `registration.promoted` action, distinguished by `manual: true` in
 the metadata.
+
+---
+
+## 11. Check-in operations — `/admin/presenca`
+
+The door screen gained one operational block above its existing search. **Nothing below it changed**,
+and that is the design: the manual list is how every exception gets resolved, and the panel's own copy
+says so rather than leaving it implied (D44).
+
+### 11.1 The block
+
+```
+CHECK-IN DO EVENTO                               [ Aberto ]
+Deixe o QR na tela da entrada. Quem chega confirma a própria presença.
+
+[ Exibir QR em tela cheia ]  [ Fechar check-in ]  [ Gerar novo QR ]
+Este QR funciona até 20:58.
+────────────────────────────────────────────────────────────────
+A lista abaixo continua sendo a forma de resolver exceções: sem
+internet, celular descarregado, dados que não batem.
+```
+
+Closed, it is one button — `Abrir check-in` — and one sentence saying that nobody can confirm a
+presence from their phone while it is shut.
+
+### 11.2 The three actions
+
+| Action | Confirmation | Audited | Notes |
+| --- | --- | --- | --- |
+| `Abrir check-in` | none | `checkin.session_opened` | The safe direction. **Idempotent**: tapping it twice, or two organizers opening the screen at once, returns the session that already exists — the QR on the projector must not change because somebody pressed a button again, so nothing is audited when nothing happened. |
+| `Fechar check-in` | required | `checkin.session_closed` | Every copy of the public URL is inert the moment this commits, including every screenshot of the projected QR. Closing an already-closed event is answered, not raised. |
+| `Gerar novo QR` | required | `checkin.session_rotated` | For "that QR leaked". Closes the live session and mints a new token, which means the code on screen must be replaced — hence the confirmation. |
+
+**No audit row ever contains a session token.** An audit log is read by more people, and kept for
+longer, than the capability it would be quoting.
+
+### 11.3 What the panel deliberately does not show
+
+**The arrival count.** It was built and then removed: the panel immediately below already renders
+`47 / 48 presentes` from the same read, and two copies of one number on one screen is how an organizer
+ends up comparing them during an outage and believing the difference means something. The panel owns
+the *session* — the thing only it can tell you — and the counter below owns the number.
+
+**The session token, as text.** It is in the wall's link and in the QR the wall draws, both of which
+are necessary. Printing it on this screen would put a live capability into every photograph anybody
+takes of an organizer's laptop.
+
+### 11.4 The wall — `/admin/presenca/mural`
+
+A route **inside** the protected subtree rather than a public page that renders a number: the wall is
+shown on an organizer's own machine, so `requireAdmin()` in the layout applies and the composition
+simply covers the admin chrome, exactly as the raffle stage does. `notFound()` when no session is
+open — a wall with a dead QR on a projector is worse than no wall.
+
+Its count comes from `/admin/presenca/contagem`, a route handler that calls `assertAdmin()` first and
+returns **two integers and no participant record of any kind**. Turnout is operational information
+about the organization, which is why D19 keeps it off the public page and why this endpoint is
+authenticated rather than public.
+
+Design, motion and the reasoning behind the layout: [VISUAL-DIRECTION.md § 15.3](./VISUAL-DIRECTION.md).
+
+### 11.5 Certificates
+
+`/admin/inscricoes` keeps its per-row `Copiar link` and `Enviar no WhatsApp` unchanged. They are now
+the **fallback**: the primary distribution method is the public portal at `/certificado`, which the
+organizer posts once (D45, PRODUCT-SPEC.md § 15). The `Certificados liberados` switch on
+`/admin/configuracoes` is unchanged and still governs both paths — the portal renders one sentence and
+mounts no form at all while it is off.

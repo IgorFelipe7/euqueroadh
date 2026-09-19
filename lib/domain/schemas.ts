@@ -10,6 +10,7 @@
  */
 import { z } from 'zod';
 
+import { identityKey } from './identity';
 import { normalizeMobile } from './phone';
 
 export const NAME_MAX_LENGTH = 120;
@@ -267,3 +268,106 @@ export function fieldErrors<T>(error: z.ZodError<T>): Record<string, string> {
 
   return errors;
 }
+
+/* ------------------------------------------------------------------------------------------------
+ * Guest identification — self check-in and the certificate portal
+ * ---------------------------------------------------------------------------------------------- */
+
+/** A first name is one word in practice and never a paragraph; 60 characters is generous for both. */
+export const FIRST_NAME_MAX_LENGTH = 60;
+
+/**
+ * The first name a guest types to identify themselves.
+ *
+ * Validated on **canonical emptiness**, not on raw emptiness: a field holding only spaces, a tab or a
+ * non-breaking space is not an answer, and `identityKey` is the same reduction the database applies
+ * before it matches. Everything else is accepted as typed — the value is a lookup key, never stored,
+ * and the matching rule is `public.registration_identity_key()`, which this schema does not duplicate.
+ *
+ * No character allowlist, for the reason `nameSchema` gives: rejecting apostrophes in people's names
+ * is not how cross-site scripting is prevented, and it is how `d'Ávila` gets turned away at the door.
+ */
+export const firstNameSchema = z
+  .string({ error: 'Informe seu primeiro nome.' })
+  .transform((value) => value.trim())
+  .pipe(
+    z
+      .string()
+      .max(FIRST_NAME_MAX_LENGTH, { error: 'Informe apenas o primeiro nome.' })
+      .refine((value) => identityKey(value).length > 0, {
+        error: 'Informe seu primeiro nome.',
+      }),
+  );
+
+/**
+ * The age a guest types to break an ambiguity.
+ *
+ * It applies the **technical** bounds (1–120) and deliberately not `PUBLIC_AGE_MIN`. The person is
+ * already registered: their stored age is whatever the record says, and an organizer may have entered
+ * a younger participant by hand through the channel PRODUCT-SPEC.md § 12.1 describes. Applying the
+ * online eligibility floor here would refuse that person their own check-in and their own certificate,
+ * which is a different rule wearing the same number.
+ */
+export const identificationAgeSchema = adminAgeSchema;
+
+/**
+ * Self check-in — PART A of the launch brief.
+ *
+ * `firstName` and `age` are optional because the flow **asks for them progressively**: the first
+ * submission carries a telephone number alone. An empty string means "not supplied yet" and becomes
+ * `null`, which is what the RPC reads as "do not narrow on this field"; it never becomes a value that
+ * would narrow the candidate set with something the guest did not say.
+ */
+export const checkInInputSchema = z.object({
+  phone: phoneSchema,
+  firstName: z
+    .string()
+    .optional()
+    .transform((value) => value ?? '')
+    .transform((value, ctx) => {
+      if (value.trim().length === 0) return null;
+      const parsed = firstNameSchema.safeParse(value);
+      if (parsed.success) return parsed.data;
+      ctx.addIssue({ code: 'custom', message: parsed.error.issues[0]?.message ?? 'Informe seu primeiro nome.' });
+      return z.NEVER;
+    }),
+  age: z
+    .string()
+    .optional()
+    .transform((value) => value ?? '')
+    .transform((value, ctx) => {
+      if (value.trim().length === 0) return null;
+      const parsed = identificationAgeSchema.safeParse(value);
+      if (parsed.success) return parsed.data;
+      ctx.addIssue({ code: 'custom', message: parsed.error.issues[0]?.message ?? 'Informe uma idade válida.' });
+      return z.NEVER;
+    }),
+});
+
+export type CheckInValues = z.output<typeof checkInInputSchema>;
+
+/**
+ * The certificate portal — PART B of the launch brief.
+ *
+ * Identical in shape to check-in except that **`firstName` is mandatory**. That is the whole of the
+ * "slightly stronger identity flow" the brief asks for, and it is stated here as a schema rather than
+ * as a comment: `/certificado` is reachable for as long as the site exists, with no operator present
+ * and no session bounding it, so it opens with two facts instead of one.
+ */
+export const certificateLookupSchema = z.object({
+  phone: phoneSchema,
+  firstName: firstNameSchema,
+  age: z
+    .string()
+    .optional()
+    .transform((value) => value ?? '')
+    .transform((value, ctx) => {
+      if (value.trim().length === 0) return null;
+      const parsed = identificationAgeSchema.safeParse(value);
+      if (parsed.success) return parsed.data;
+      ctx.addIssue({ code: 'custom', message: parsed.error.issues[0]?.message ?? 'Informe uma idade válida.' });
+      return z.NEVER;
+    }),
+});
+
+export type CertificateLookupValues = z.output<typeof certificateLookupSchema>;

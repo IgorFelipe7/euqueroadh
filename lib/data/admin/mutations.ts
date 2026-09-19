@@ -463,6 +463,82 @@ export async function resolveRaffleDraw(
   return { ok: true, value: { status: row?.status ?? 'running' } };
 }
 
+/* ------------------------------------------------------------------------------------------------
+ * Check-in sessions (migration 17)
+ * ---------------------------------------------------------------------------------------------- */
+
+/** What the two opening modes return: the live session, whether it was just created or not. */
+export interface OpenedCheckInSession {
+  readonly sessionId: string;
+  readonly token: string;
+  readonly openedAt: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * Opens check-in, or rotates the open session.
+ *
+ * `rotate: false` is **idempotent**: an operator who taps `Abrir check-in` twice, or two organizers
+ * who open the admin screen at once, get the session that already exists rather than a new token — the
+ * QR on the projector must not change because somebody pressed a button again. Only a real state
+ * change is audited, and the RPC decides which of the two happened.
+ *
+ * `rotate: true` is the deliberate "that QR leaked" action: the live session is closed and a new token
+ * minted, which invalidates every screenshot of the old one.
+ */
+export async function openCheckInSession(
+  eventId: string,
+  rotate = false,
+): Promise<MutationResult<OpenedCheckInSession>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { data, error } = await supabase.rpc('open_check_in_session', {
+    p_event_id: eventId,
+    p_rotate: rotate,
+  });
+
+  if (error) return fail(error, 'admin.check_in_open_rpc_failed');
+
+  const row = firstRow<{
+    session_id: string;
+    token: string;
+    opened_at: string;
+    expires_at: string;
+  }>(data);
+
+  if (!row) return fail({ message: 'empty' }, 'admin.check_in_open_rpc_empty');
+
+  return {
+    ok: true,
+    value: {
+      sessionId: row.session_id,
+      token: row.token,
+      openedAt: row.opened_at,
+      expiresAt: row.expires_at,
+    },
+  };
+}
+
+/**
+ * Closes check-in, making every copy of the public URL inert.
+ *
+ * Idempotent in the other direction: closing an event whose check-in is already shut answers `false`
+ * rather than raising, because "check-in is closed" is the state the operator wanted and an error would
+ * read as a failure to reach it.
+ */
+export async function closeCheckInSession(eventId: string): Promise<MutationResult<boolean>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { data, error } = await supabase.rpc('close_check_in_session', { p_event_id: eventId });
+
+  if (error) return fail(error, 'admin.check_in_close_rpc_failed');
+
+  const row = firstRow<{ closed: boolean }>(data);
+  return { ok: true, value: row?.closed === true };
+}
+
 /** A `RETURNS TABLE` function arrives as an array of rows; these all return exactly one. */
 function firstRow<T>(data: unknown): T | null {
   if (Array.isArray(data)) return (data[0] as T | undefined) ?? null;

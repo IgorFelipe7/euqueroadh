@@ -14,6 +14,15 @@ export const ROUTES = {
   adminRegistrations: '/admin/inscricoes',
   adminExport: '/admin/inscricoes/exportar',
   adminAttendance: '/admin/presenca',
+  /**
+   * The projected check-in wall, and the tiny endpoint it polls for the arrival count.
+   *
+   * Both live **under** `/admin`, which is the point: the wall is shown by an organizer on their own
+   * machine, so it stays inside the authorization boundary and inside `proxy.ts`'s matcher rather
+   * than becoming a second public surface that happens to render a number.
+   */
+  adminCheckInWall: '/admin/presenca/mural',
+  adminAttendanceCount: '/admin/presenca/contagem',
   adminRaffles: '/admin/sorteio',
   adminSettings: '/admin/configuracoes',
   adminTeam: '/admin/equipe',
@@ -47,6 +56,41 @@ export function certificatePath(token: string): string {
 
 export function certificateUrl(siteUrl: string, token: string): string {
   return new URL(certificatePath(token), siteUrl).toString();
+}
+
+/**
+ * The public certificate portal — the address an organizer posts to a WhatsApp group.
+ *
+ * It is a constant rather than a member of `ROUTES` because it is also spoken copy: it appears on the
+ * check-in success screen as text a guest reads and types later. `certificatePortalUrl()` is what
+ * builds the version with a host, and `PORTAL_LABEL` the version without a scheme, so the two can
+ * never drift into saying different addresses.
+ */
+export const CERTIFICATE_PORTAL_PATH = '/certificado';
+
+export function certificatePortalUrl(siteUrl: string): string {
+  return new URL(CERTIFICATE_PORTAL_PATH, siteUrl).toString();
+}
+
+/** `euqueroadh.com/certificado` — the address as a person reads it aloud, with no scheme. */
+export function certificatePortalLabel(siteUrl: string): string {
+  const url = new URL(CERTIFICATE_PORTAL_PATH, siteUrl);
+  return `${url.host}${url.pathname}`;
+}
+
+/**
+ * A check-in session's public URL.
+ *
+ * The token is a capability, so this is the one place it becomes a link, and it is built from the
+ * canonical site URL rather than from a request header: the QR is scanned by a phone that has never
+ * seen our host, and on a venue network that may resolve it differently than the laptop does.
+ */
+export function checkInPath(token: string): string {
+  return `/presenca/${encodeURIComponent(token)}`;
+}
+
+export function checkInUrl(siteUrl: string, token: string): string {
+  return new URL(checkInPath(token), siteUrl).toString();
 }
 
 /** Where an interrupted sign-in lands when no valid destination survived validation. */

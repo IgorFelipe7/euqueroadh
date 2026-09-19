@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(86);
+select plan(97);
 
 -- ---------------------------------------------------------------- tables ----
 select has_table('public', 'events',        'events exists');
@@ -13,20 +13,23 @@ select has_table('public', 'admin_users',   'admin_users exists');
 select has_table('public', 'admin_actions', 'admin_actions exists');
 select has_table('public', 'raffles',       'raffles exists');
 select has_table('public', 'raffle_draws',  'raffle_draws exists');
+select has_table('public', 'check_in_sessions', 'check_in_sessions exists');
 
--- D17 said "four tables. No more."  It is now SIX, and this number is the place that decision is
--- recorded: raffles and raffle_draws were added by RAFFLE-AND-CERTIFICATE-SPEC.md, which argued
--- for them explicitly.  Attendance and certificates, by contrast, added NO table - they are two
--- columns on registrations and one on events, because neither is an entity.
--- The assertion still does its job: a seventh table cannot appear without someone editing this
+-- D17 said "four tables. No more."  It is now SEVEN, and this number is the place those decisions
+-- are recorded: raffles and raffle_draws were added by RAFFLE-AND-CERTIFICATE-SPEC.md, and
+-- check_in_sessions by migration 17 - each argued for explicitly.  Attendance and certificates, by
+-- contrast, added NO table: they are two columns on registrations and one on events, because
+-- neither is an entity.  A check-in session IS one - it has a lifecycle, an opener and an expiry -
+-- which is exactly the test that let the other two through as columns.
+-- The assertion still does its job: an eighth table cannot appear without someone editing this
 -- line and saying why.
 select is(
   (select count(*)::int
      from pg_class c
      join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relkind = 'r'),
-  6,
-  'public holds exactly six tables - no speculative entities');
+  7,
+  'public holds exactly seven tables - no speculative entities');
 
 -- ----------------------------------------------------------------- types ----
 select has_type('public', 'registration_status', 'registration_status enum exists');
@@ -161,13 +164,25 @@ select ok(
   'the audited action list is an explicit allowlist');
 
 -- --------------------------------------------------------------- indexes ----
-select has_index('public', 'registrations', 'registrations_active_phone_uidx',
-  'I3: partial unique index on (event_id, phone_e164)');
-select index_is_unique('public', 'registrations', 'registrations_active_phone_uidx');
+select has_index('public', 'registrations', 'registrations_active_person_uidx',
+  'I3: partial unique index on (event_id, phone_e164, canonical name)');
+select index_is_unique('public', 'registrations', 'registrations_active_person_uidx');
 select ok(
   (select indpred is not null from pg_index
-    where indexrelid = 'public.registrations_active_phone_uidx'::regclass),
+    where indexrelid = 'public.registrations_active_person_uidx'::regclass),
   'the duplicate index is PARTIAL - a cancelled person may register again');
+-- The third key column is an EXPRESSION, not a stored column: migration 16 added no field to the
+-- table, because the canonical name is derived from one that was already there (launch brief § 24,
+-- "do not persist new guest identity fields").
+select ok(
+  (select indexprs is not null from pg_index
+    where indexrelid = 'public.registrations_active_person_uidx'::regclass),
+  'the person key is an index expression over full_name, not a new stored column');
+select is(
+  (select count(*)::int from pg_index
+    where indexrelid = 'public.registrations_active_person_uidx'::regclass
+      and indnatts = 3),
+  1, 'and the index is keyed on exactly three columns');
 select has_index('public', 'registrations', 'registrations_waitlist_rank_uidx', 'I4 backstop');
 select index_is_unique('public', 'registrations', 'registrations_waitlist_rank_uidx');
 select has_index('public', 'registrations', 'registrations_waitlist_order_idx', 'promotion order index');
@@ -179,6 +194,32 @@ select has_index('public', 'events', 'events_single_active_uidx', 'I5');
 select index_is_unique('public', 'events', 'events_single_active_uidx');
 select has_index('public', 'admin_actions', 'admin_actions_created_idx', 'audit review');
 select has_index('public', 'admin_actions', 'admin_actions_actor_idx', 'per-actor audit review');
+
+-- ------------------------------------------------- check_in_sessions (migration 17) ----
+select has_index('public', 'check_in_sessions', 'check_in_sessions_token_uidx',
+  'the capability is unique');
+select index_is_unique('public', 'check_in_sessions', 'check_in_sessions_token_uidx');
+-- The constraint that makes "I closed check-in" mean it: two open sessions would be two live QR
+-- codes, one of which an operator believes they have shut.
+select has_index('public', 'check_in_sessions', 'check_in_sessions_one_open_uidx',
+  'at most one OPEN session per event');
+select index_is_unique('public', 'check_in_sessions', 'check_in_sessions_one_open_uidx');
+select ok(
+  (select indpred is not null from pg_index
+    where indexrelid = 'public.check_in_sessions_one_open_uidx'::regclass),
+  'and it is partial, so closed sessions accumulate as history rather than colliding');
+select ok(
+  (select count(*) = 1 from pg_constraint
+    where conrelid = 'public.check_in_sessions'::regclass
+      and conname = 'check_in_sessions_token_shape'),
+  'a hand-written token cannot be a short or guessable one');
+select ok(
+  (select count(*) = 1 from pg_constraint
+    where conrelid = 'public.check_in_sessions'::regclass
+      and conname = 'check_in_sessions_closed_iff'),
+  'a status and its timestamp arrive together or not at all');
+select col_not_null('public', 'check_in_sessions', 'expires_at',
+  'every session has a hard ceiling - a forgotten one stops being a capability by itself');
 
 select * from finish();
 rollback;

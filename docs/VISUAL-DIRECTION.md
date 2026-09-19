@@ -1261,3 +1261,97 @@ If any of these appears in the implementation, it is a defect regardless of how 
 - Turnstile inserted without reserved height.
 - `type="number"` for age.
 - Inputs below 16 px.
+
+---
+
+## 15. The guest self-service surfaces
+
+Three new compositions, added for the operational phase: the mobile check-in page, the certificate
+portal, and the projected check-in wall. The first two are ordinary members of the public dark
+identity. The third is the second — and last — exception to "the admin is light".
+
+### 15.1 Mobile check-in — `/presenca/<token>`
+
+**One field on the screen, and one action.** That is the whole design brief: this page is used standing
+up, one-handed, in a doorway, on a venue network, by somebody who wants to be inside. Everything that
+is not the field or the button is context, and it is small.
+
+| | |
+| --- | --- |
+| Shell | `min-h-dvh`, `max-w-[34rem]`, vertically centred. `dvh` and not `vh`, so the button stays reachable when the browser chrome is showing and the layout does not jump when the keyboard opens over it (§ 9.8). |
+| Header | Gold kicker `CHECK-IN`, `text-h2` heading, one welcome line, and one muted line naming the event and its date — so a guest who scanned the wrong screen at a venue running two things can tell immediately. |
+| Field | `min-h-14`, not the registration form's 13. This is the only control on the page and it is tapped by a thumb in motion. |
+| Action | `CTA_PRIMARY`, full width. Gold, and it is the only gold on the page besides the kicker. |
+
+**The step prompts are `role="status"`, never `role="alert"`.** A second question is not an
+interruption of something the guest was doing; it *is* the next thing. Focus moves to the new field,
+which is what actually takes a screen-reader user there.
+
+**The success panel** is the one place this page is allowed a flourish, and the budget is one stroke:
+the check mark draws with the page's existing `u-draw` primitive (§ 10.2) and stops. No confetti, no
+burst, no loop — the same restraint the raffle stage's 600 ms bloom was built on, and it collapses to a
+static final state under `prefers-reduced-motion` through the rule that already exists.
+
+**`CTA_SECONDARY_WRAP`.** `Confirmar outra pessoa deste mesmo celular` is the only button label in the
+product that needs two lines: it wants about 350 px inside a 287 px panel at 375 px. It gets a
+wrapping variant of the secondary pill rather than shorter copy, because that sentence is what makes
+the household loop discoverable at all.
+
+### 15.2 The certificate portal — `/certificado`
+
+The same shell and the same vocabulary as check-in, with two fields instead of one and no flourish at
+all: nothing is celebrated here, because success is a redirect to the certificate itself.
+
+The refusal is an **outlined panel in `border-strong`, not `danger-300`**. Not finding a certificate is
+a state, not an error — the likely cause is a typo the person can see — and a red flood would tell them
+they did something wrong when most of the time they simply have not been marked present yet.
+
+### 15.3 The check-in wall — `/admin/presenca/mural`
+
+The visually strongest new surface, and the second exception to § 12's "the admin is light" (D38 was
+the first, for the raffle stage). The exception stays narrow: nothing else in the admin darkens.
+
+**Three things, legible at three distances.** A guest two metres away reads the QR; somebody crossing
+the room reads the number; anybody at all reads the date. That is why the composition is *not* the
+stage's — the stage has one subject in the middle of the frame, and this has three that must all work
+at once.
+
+| Region | Treatment |
+| --- | --- |
+| Instruction | `VOCÊ CHEGOU.` at 300 over `CONFIRME SUA PRESENÇA.` at 800 — the identity's weight jump, the same relationship `educação` has to `Financeira` on the banner. Forced onto two lines: a statement followed by an instruction should not reflow into one. |
+| Date | `19SET` in the condensed-numeral / expanded-month lockup, in `sky-300` at 85%. A wall at an entrance is also signage. |
+| QR | A white plate with generous padding. **The only `box-shadow` in the repository**, and it earns its place: a hard white rectangle on navy reads as a rendering artefact on a projector. It never animates. |
+| Fallback | The URL under the QR, in readable form, for a camera app that will not scan and for the organizer who has to read it out. |
+| Count | The largest glyph on the wall, `tabular-nums` so it does not jitter sideways past 9 and 99, with the counting rail's beads above it. |
+
+**Layout.** Stacked on a phone or a portrait tablet; type left and QR right from `64rem` in landscape,
+which is every real use of this screen. The QR is sized `min(78vmin, 34rem, 40vh)` when stacked — the
+`40vh` term exists because at 768×1024 a width-derived symbol pushes the fallback URL off the bottom
+of a surface that clips — and drops that term in landscape, where the symbol has a column of its own.
+
+**Motion: one increment, then nothing.** When the count rises, the new value rises ~0.18em into place
+and one gold bead settles, both `transform`/`opacity` only, both ~520 ms, both once. A count that goes
+*down* — an organizer undoing a mis-tap — corrects itself silently, because a celebration for a
+departure is nonsense. Under `prefers-reduced-motion` the number simply changes.
+
+**What it never shows: a participant's name.** Not the last arrival, not a scrolling list, not an
+initial. The component's props are a URL, a date lockup and two integers, so there is no name in scope
+for a future edit to render — which is a stronger guarantee than a rule asking nobody to add one.
+
+**Chrome.** Full-screen and exit, on the raffle stage's existing `.u-stage-chrome` behaviour, reused
+rather than reinvented: fade out after three seconds of no input, return on pointer move or keyboard
+focus, and `visibility` rides along so a faded control leaves the tab order too.
+
+### 15.4 The QR itself
+
+Rendered on the server as inline SVG by `components/qr-code.tsx`, from the encoder in `lib/qr/`. Three
+consequences of that choice are design decisions rather than implementation details:
+
+- **it ships no JavaScript**, so the single most important element on the wall cannot fail to appear;
+- **it is one `<path>`**, not ~700 `<rect>`s, so a static picture costs one DOM node;
+- **the quiet zone is part of the drawing**, not a CSS margin, so no layout change can take away the
+  four-module border a scanner needs to find the symbol at all.
+
+Error-correction level **Q** — about a quarter of the symbol recoverable — because at this payload
+length it costs the same module count as level M. Free robustness against a projector's glare, a
+camera's angle, and the hand that ends up in front of the screen.

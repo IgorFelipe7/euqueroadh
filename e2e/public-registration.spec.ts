@@ -258,7 +258,7 @@ test('a registration that arrives after the seats are gone joins the waiting lis
   ]);
 });
 
-test('the same number twice is recognised, and the stored row is never rewritten', async ({
+test('the same person twice is recognised, and the stored row is never rewritten', async ({
   page,
 }) => {
   await resetActiveEvent(OPEN);
@@ -270,9 +270,18 @@ test('the same number twice is recognised, and the stored row is never rewritten
   await submit(page);
   await expectOutcome(page, 'confirmed', 'Inscrição confirmada!');
 
-  // The same canonical number, deliberately with a different name and age.
+  /*
+   * The same person again — same canonical number, same canonical name — deliberately spelled
+   * differently and with a different age.
+   *
+   * Migration 16 narrowed the duplicate key from the telephone number to the PERSON, so this test had
+   * to be restated to keep testing what it was written to test. The name is the same one in a
+   * different case with extra whitespace, which is how the canonical form earns its keep; the age is
+   * different on purpose, because age is deliberately NOT part of the key — an age typo on a second
+   * attempt must not buy a second seat.
+   */
   await openRegistration(page);
-  await fillForm(page, { ...person, name: 'Outra Pessoa de Teste', age: '41' });
+  await fillForm(page, { ...person, name: `  ${person.name.toUpperCase()} `, age: '41' });
   await awaitToken(page);
   await submit(page);
 
@@ -282,11 +291,39 @@ test('the same number twice is recognised, and the stored row is never rewritten
   await expect(panel).toContainText('Encontramos uma inscrição confirmada');
   // Deliberately echoes no personal data: otherwise guessing a number reveals who it belongs to.
   await expect(panel).not.toContainText(person.name);
-  await expect(panel).not.toContainText('Outra Pessoa');
   await expect(panel).not.toContainText('41');
 
   expect(await registrationsFor(person.e164)).toEqual([
     { status: 'confirmed', fullName: person.name, age: 17, waitlistRank: null },
+  ]);
+});
+
+test('a second person on the same number is registered, not refused', async ({ page }) => {
+  /*
+   * The household case, and the entire user-facing point of migration 16: the audience is
+   * `PARA JOVENS`, and a family arriving together routinely has one telephone between them. Before
+   * this change the second child was answered `Você já está inscrito(a)` and had to telephone the
+   * organization.
+   */
+  await resetActiveEvent(OPEN);
+  const first = participant(30);
+  const second = { ...participant(31), digits: first.digits, e164: first.e164 };
+
+  await openRegistration(page);
+  await fillForm(page, first);
+  await awaitToken(page);
+  await submit(page);
+  await expectOutcome(page, 'confirmed', 'Inscrição confirmada!');
+
+  await openRegistration(page);
+  await fillForm(page, second);
+  await awaitToken(page);
+  await submit(page);
+  await expectOutcome(page, 'confirmed', 'Inscrição confirmada!');
+
+  expect(await registrationsFor(first.e164)).toEqual([
+    { status: 'confirmed', fullName: first.name, age: 17, waitlistRank: null },
+    { status: 'confirmed', fullName: second.name, age: 17, waitlistRank: null },
   ]);
 });
 

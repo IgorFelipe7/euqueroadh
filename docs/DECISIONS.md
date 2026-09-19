@@ -61,6 +61,11 @@ state for a rare case.
 One bit of enumeration is exposed (T6 in [DATABASE-SECURITY.md § 11](./DATABASE-SECURITY.md)) —
 accepted and documented.
 
+> **Superseded in part by [D39](#d39--the-duplicate-rule-is-the-person-not-the-telephone-number).**
+> The key is now `(event, canonical phone, canonical name)`: one telephone number legitimately belongs
+> to several people in this audience. Everything else above still holds — the check is still inside the
+> allocation lock, the stored row is still never rewritten, and the index is still partial.
+
 ### D4 · The browser never talks to Supabase on the public page
 
 **Decision.** All public reads and writes go through the Next.js server. The public path uses the
@@ -549,6 +554,12 @@ disclosure; they do not change what it is.
 **Trade-off.** The organizer distributes the links. The admin's `wa.me` deep link and the export's
 `Certificado` column exist to make that one tap rather than one message composed by hand.
 
+> **Amended by [D45](#d45--certificate-retrieval-is-self-service-the-token-remains-the-only-capability).**
+> There is now a lookup at `/certificado` — by telephone number AND first name, behind Turnstile, for
+> attendees only — which **redirects** to this same token route. The token remains the only capability
+> and nothing above is weakened; what changed is that the organizer no longer has to hand three hundred
+> links out one at a time, which was the distribution method this decision assumed.
+
 ### D37 · PNG via `next/og`; no PDF dependency
 
 **Decision.** An A4 landscape sheet and a 1080 × 1920 story, both PNG, rendered with the `next/og`
@@ -570,6 +581,199 @@ so the tracer ships them.
 
 **Reason.** It is not a tool an organizer reads; it is a surface an audience watches. The exception
 is stated here and in the spec so it is not read as licence to darken anything else.
+
+---
+
+## Part 1c — Self check-in and the certificate portal
+
+These eight decisions are the operational layer: how a guest confirms their own arrival at the door,
+and how they retrieve their own certificate afterwards. Two of them amend earlier decisions rather
+than adding to them, and both amendments are recorded here in full — D3 and D36 have not been
+deleted, they have been superseded on a stated ground.
+
+### D39 · The duplicate rule is the PERSON, not the telephone number
+
+**Decision.** `registrations_active_person_uidx` is a partial unique index on
+`(event_id, phone_e164, registration_identity_key(full_name)) WHERE status <> 'cancelled'`, replacing
+the `(event_id, phone_e164)` index of D3. `register_for_event()` checks the same key inside the same
+event row lock. **This amends D3.**
+
+**Reason.** One telephone number legitimately belongs to several registrations. The audience is
+`PARA JOVENS`; a family arriving together routinely has one phone between them, and under the old
+rule the second child was answered `already_registered` and had to telephone the organization. That
+was not a rare edge — it is the ordinary shape of this audience.
+
+Every property D3 was written to protect survives: the check still happens inside the allocation
+lock, so registration stays idempotent and a retry after a lost response cannot duplicate; the stored
+row is still never rewritten, so knowing a number still grants nobody the power to overwrite somebody
+else's registration; the index is still partial, so a cancelled person may return; and the index is
+still the backstop that makes the race impossible if the graceful path is bypassed.
+
+**Age is deliberately NOT part of the key**, which is the one place the launch brief's suggested shape
+(`event + name + phone + age`) was not followed. Two people sharing a telephone number *and* a full
+name to the letter is not a case this event has, so age adds no discriminating power — and it adds a
+real failure: somebody who types `21` instead of `12`, submits, and corrects themselves would become a
+second row holding a second seat. Under the rule above that resubmission is answered
+`already_registered`, which is what PRODUCT-SPEC.md § 9 already promises. Age keeps its job as a
+*disambiguator* in the check-in and certificate flows; it is not a component of identity.
+
+**Alternatives.** *Keeping phone-only and asking families to telephone* — the failure mode the product
+exists to remove. *A separate `household` entity* — a table, a join and a concept, to express something
+a three-column key already expresses. *Name alone* — two `João Silva`s are two people.
+
+**Trade-off.** A person who registers twice under two spellings the normalization cannot reconcile —
+`Ana` and `Ana Paula` — gets two seats. That is a capacity leak an organizer can see and cancel, and it
+is strictly less bad than refusing a real second child. The migration is a two-statement swap and
+cannot fail against existing data: the new index is strictly weaker than the one it replaces.
+
+### D40 · Self check-in exists only inside an administrator-opened session
+
+**Decision.** `check_in_sessions` — one row per opening, carrying a 160-bit token, a status and a
+12-hour `expires_at`. The public URL `/presenca/<token>` works only while its session is open and
+unexpired. A partial unique index permits **one open session per event**. Opening, rotating and closing
+are audited admin RPCs.
+
+**Reason.** Self check-in is a public, unauthenticated write against a participant's record. The only
+thing between "a guest confirms their own arrival in four seconds" and "anybody on the internet can
+mark anybody present, from anywhere, forever" is that the capability is scoped in time and opened by a
+human. A permanent `/presenca` endpoint would be a standing invitation to corrupt the raffle pool and
+the certificate eligibility set months after the room emptied.
+
+The one-open-session index is what makes "I closed check-in" mean it. Two open sessions would be two
+live QR codes, one of which an organizer believes they have shut.
+
+**Alternatives.** *A permanent URL with a rate limit* — a rate limit changes the volume of the problem,
+not its shape. *A per-guest link* — that is the distribution problem the certificate portal exists to
+remove, applied to the door. *No expiry* — a session an organizer forgets to close is a capability
+nobody revoked.
+
+**Trade-off.** An organizer who forgets to open check-in has a wall with no QR on it, which is a
+visible failure at the start of an event rather than a silent one afterwards. The admin panel's
+default state is `Fechado` with one button.
+
+### D41 · The check-in session token is stored in clear
+
+**Decision.** `check_in_sessions.token` holds the capability as issued, not a hash of it.
+
+**Reason.** The theoretically cleaner scheme stores `sha256(token)` and shows the clear value once. It
+is rejected for one operational reason that outranks the theory: **the wall is a web page, and it gets
+reloaded.** The laptop driving the projector is closed and reopened; the browser restarts; a second
+organizer opens the wall on another machine; the operator refreshes because the count looked stuck.
+Under a hash-only scheme every one of those destroys the only copy of the capability, and the QR two
+hundred people are pointing cameras at has to be replaced mid-event.
+
+What the clear token costs is precisely bounded: an attacker who can already read this table can mark
+people present while the session is open. Compare what such an attacker already holds —
+`registrations` carries every participant's name, age and telephone number, and
+`registrations.certificate_token` is stored in clear for the same reason (D36). The session token adds
+no exposure class that a reader of this database does not already possess. No Data API role reaches
+the table: `anon` and `service_role` hold nothing on it, and `authenticated` reads it only through a
+policy that calls `is_active_admin()`.
+
+Entropy is where the protection actually lives: 160 bits, exactly as the certificate token.
+
+**Trade-off.** Stated above and accepted. Rotation is one button, and it is audited.
+
+### D42 · Guest identification is adaptive, and its failures are indistinguishable
+
+**Decision.** `self_check_in()` narrows one candidate set — confirmed registrations for this event on
+this telephone number — by whichever fields the guest has supplied so far, and answers `confirmed`,
+`already_present`, `need_name`, `need_age` or `not_found`. A telephone number with **no** eligible
+registration and one shared by **five** are answered identically at every step.
+
+**Reason.** The product must not contain an endpoint that answers "who is registered under this
+number". That is a shape problem, not a rate-limiting one. The launch brief sketched asking for a first
+name only when "more information is required", which would have made an unknown number distinguishable
+from a shared one on the very first step; asking in both cases costs a guest with a unique number
+nothing (they never reach it) and costs a prober everything.
+
+A waitlisted, cancelled or unknown person all produce zero candidates and therefore all travel the same
+path to the same sentence. The `GuestEvent` log vocabulary is coarsened to match — `need_name` and
+`need_age` share one event name — because a log that records how far a prober got is the same
+disclosure with a longer retention period.
+
+**The single bit that IS observable** is the one the flow cannot function without: submitting a number
+that identifies exactly one confirmed person and receiving `confirmed` reveals that the number belongs
+to a confirmed attendee. That is the same bit `already_registered` already exposes (T6, accepted in
+DATABASE-SECURITY.md § 11), and it costs a Turnstile solve per guess.
+
+**Trade-off.** Somebody called by their second given name — `Pedro`, out of `João Pedro Souza` — is not
+identified, is asked for their age, and is then sent to the team. Deterministic normalization that
+sometimes says "ask a human" is strictly better than fuzzy matching that sometimes marks the wrong
+sibling present.
+
+### D43 · Attendance may be self-confirmed, but only for a confirmed registration
+
+**Decision.** `self_check_in()` writes `attended_at` only where `status = 'confirmed'`. A waitlisted
+person is refused with the generic sentence. `attended_at` is assigned once and a repeat scan issues no
+`UPDATE` at all.
+
+**Reason.** A waitlisted person at the door is a **promotion** — a capacity-checked, audited,
+authenticated act — and self check-in must not be able to perform one, or I1 would be bypassable from a
+phone. This is the identical rule `set_registration_attendance()` enforces with its `not_confirmed`
+error; the public path refuses it silently instead, because naming the reason would disclose that
+person's status to whoever typed their number.
+
+**Trade-off.** An organizer who promotes somebody at the door must do it on the admin screen first. That
+is one extra tap on a path that already requires a human decision about a seat.
+
+### D44 · The manual attendance screen remains, and is the fallback by design
+
+**Decision.** `/admin/presenca` keeps its search and its per-row button unchanged. The check-in panel is
+added above them, and its own copy says the list below handles the exceptions.
+
+**Reason.** Self check-in serves the guests who have a charged phone and a signal. An event that could
+only admit people through a QR would have no answer for the first person whose battery died, for the
+guest whose registered name does not match what they type, or for a venue whose wifi fails at 19:05.
+The fallback is not a legacy path to be removed later; it is what makes the feature above it safe to
+depend on.
+
+### D45 · Certificate retrieval is self-service; the token remains the only capability
+
+**Decision.** `/certificado` identifies a participant by telephone number **and** first name (plus age
+when that is ambiguous) and **redirects** to the existing `/certificado/<token>`. `find_certificate()`
+returns a token that already exists; it issues nothing, and it applies the same eligibility predicate
+`get_certificate()` applies. **This amends D36.**
+
+**Reason.** D36's reasoning — that a page answering "what is the name registered to this number" is a
+personal-data disclosure endpoint with a form in front of it — has not been refuted. It has been
+costed. The alternative it protected was an organizer copying three hundred individual links and
+sending them one at a time; in practice that means most people never receive one, and the ones who do
+receive them through a chain of forwards in which a personal capability is pasted into group chats. The
+disclosure the original design refused to build is the disclosure the distribution method produced
+anyway, at greater cost.
+
+So the amendment is narrow, and four things are unchanged:
+
+* **the token remains the only capability** — nothing here weakens or parallels it, and there is
+  deliberately no second access mechanism;
+* **the proof is stronger than at the door** — two fields up front, because this address is reachable
+  for as long as the site exists with no operator present, where a check-in session is alive for one
+  evening;
+* **attendance is still required** — the predicate is `get_certificate()`'s own, so no amount of correct
+  identification produces a certificate for somebody who did not participate;
+* **no name is ever returned** — the result is one word and, on success, one token that travels in a
+  `Location` header and never becomes data client-side code holds.
+
+The individual tokenized links remain valid and remain the admin's fallback.
+
+**Trade-off.** Somebody who knows a participant's telephone number, first name and age can open their
+certificate. That document carries a name and the event's public facts and nothing else — no age, no
+telephone number, no identifier — and it is the same exposure as being forwarded their link, which is
+what the old distribution method guaranteed at scale.
+
+### D46 · Certificates stay disabled until an organizer says otherwise, and the portal refuses before it looks
+
+**Decision.** `events.certificates_enabled` is unchanged and still defaults to false. `/certificado`
+renders one sentence and **mounts no form at all** while it is off; the Server Action re-checks the
+switch before any identity field reaches the database; `find_certificate()` checks it a third time and
+answers a flat `not_found` rather than `need_age`.
+
+**Reason.** The window between the event ending and the organizer releasing certificates is exactly when
+a probe would be most interesting and least noticed. Three independent refusals, the outermost of which
+means there is no input to submit, is the cheapest way to make that window empty. The flat `not_found`
+matters on its own: answering `need_age` while the switch is off would confirm that the name matched
+something.
 
 ---
 

@@ -19,9 +19,10 @@ corrupt event.
 | --- | --- | --- |
 | **I1** | `events.confirmed_count` never exceeds `events.capacity` | `CHECK` constraint |
 | **I2** | `confirmed_count` and `waitlist_count` always equal the actual number of rows in each status | `AFTER` trigger on `registrations`, single-writer |
-| **I3** | At most one non-cancelled registration exists per `(event_id, phone_e164)` | partial `UNIQUE` index |
+| **I3** | At most one non-cancelled registration exists per `(event_id, phone_e164, canonical name)` — one **person**, not one telephone number (D39) | partial `UNIQUE` index on an expression |
 | **I4** | Waitlist order is total, stable and never renumbered | monotonic `events.waitlist_seq` + `UNIQUE(event_id, waitlist_rank)` |
 | **I5** | At most one event has `is_active = true` | partial `UNIQUE` index |
+| **I10** | At most one **open** check-in session exists per event, so "check-in is closed" cannot be false (D40) | partial `UNIQUE` index |
 | **I7** | An event can only be `open` while `capacity > 0` | `CHECK` constraint + `update_event_settings()` |
 | **I8** | `events.settings_version` changes **only** when an administrator changes an admin-editable setting — never through registration activity | Written exclusively by the settings/purge RPCs; the counter trigger does not touch it |
 
@@ -30,7 +31,7 @@ unreachable by the privilege model:
 
 | # | Invariant | Enforced by |
 | --- | --- | --- |
-| **I6** | Every lock is acquired in the order `events` → `raffles` → `registrations`, never another (the raffle step was added by RAFFLE-AND-CERTIFICATE-SPEC.md § 3.2) | No role can write `registrations` or `events` directly; all mutations go through event-first RPCs (§ 5.5, § 8.3) |
+| **I6** | Every lock is acquired in the order `events` → (`raffles` \| `check_in_sessions`) → `registrations`, never another. `raffles` and `check_in_sessions` are siblings and are never locked together by any routine, so their relative order does not exist and cannot be got wrong | No role can write `registrations` or `events` directly; all mutations go through event-first RPCs (§ 5.5, § 8.3) |
 | **I9** | Every database-local administrative mutation writes its audit record in the **same transaction** as the mutation | The audit `INSERT` is the last statement inside each mutation RPC; no role can mutate outside an RPC (§ 6.7) |
 
 ---
@@ -359,7 +360,7 @@ by the RPCs themselves — which construct `metadata` server-side and never acce
 
 | Index | Definition | Serves |
 | --- | --- | --- |
-| `registrations_active_phone_uidx` | `unique (event_id, phone_e164) where status <> 'cancelled'` | **I3** — the duplicate rule, and a fast duplicate lookup |
+| `registrations_active_person_uidx` | `unique (event_id, phone_e164, registration_identity_key(full_name)) where status <> 'cancelled'` | **I3** — the duplicate rule, a fast duplicate lookup, and the `(event_id, phone_e164)` prefix the two guest lookups resolve a shared number through |
 | `registrations_waitlist_rank_uidx` | `unique (event_id, waitlist_rank) where waitlist_rank is not null` | **I4** — no two people share a queue position |
 | `registrations_waitlist_order_idx` | `(event_id, waitlist_rank) where status = 'waitlisted'` | Promotion picks the N oldest without a sort |
 | `registrations_event_created_idx` | `(event_id, created_at desc)` | The admin list's default ordering |
@@ -370,7 +371,7 @@ by the RPCs themselves — which construct `metadata` server-side and never acce
 | `admin_actions_created_idx` | `(created_at desc)` | Audit review |
 | `admin_actions_actor_idx` | `(actor_user_id, created_at desc)` | "What did this administrator do?" |
 
-`registrations_active_phone_uidx` is partial on purpose: a cancelled person can register again
+`registrations_active_person_uidx` is partial on purpose: a cancelled person can register again
 ([PRODUCT-SPEC.md § 9](./PRODUCT-SPEC.md)).
 
 ---
@@ -603,7 +604,7 @@ on the row lock and are processed strictly one at a time.
    each statement takes a fresh snapshot — so it sees T1's committed row and returns
    `already_registered`.
 
-Had the duplicate check been outside the lock, both would have inserted; `registrations_active_phone_uidx`
+Had the duplicate check been outside the lock, both would have inserted; `registrations_active_person_uidx`
 would have aborted the second with a unique violation instead of returning a clean outcome. The index
 therefore acts as the backstop, and the lock provides the graceful path.
 
@@ -1309,7 +1310,8 @@ fully transactional and audited like any other database-local mutation.
 | Registration at capacity, waitlist **on** | — | +1, rank = `seq+1` | appended | n/a |
 | Registration at capacity, waitlist **off** | — | — | unchanged | outcome `full` |
 | Registration while `state = closed` | — | — | unchanged | outcome `closed` |
-| Duplicate phone (any state) | — | — | unchanged | outcome `already_registered` |
+| Duplicate person (any state) | — | — | unchanged | outcome `already_registered` |
+| Same phone, different person | +1 if a seat is free | +1 if waitlisted | new row | allocated normally (D39) |
 | **Capacity raised** | unchanged | unchanged | unchanged | **No.** Dashboard prompts the admin. |
 | **Capacity lowered, ≥ confirmed** | unchanged | unchanged | unchanged | No |
 | **Capacity lowered, < confirmed** | unchanged | unchanged | unchanged | **Rejected**, nothing changes |
@@ -1673,6 +1675,13 @@ would read "denied". `PUBLIC` likewise holds nothing on any application table.
 | `raffles` | `service_role` | ❌ | ❌ | ❌ | ❌ |
 | `raffle_draws` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
 | `raffle_draws` | `service_role` | ❌ | ❌ | ❌ | ❌ |
+| `check_in_sessions` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
+| `check_in_sessions` | `service_role` | ❌ | ❌ | ❌ | ❌ |
+
+`check_in_sessions` follows the `registrations` row exactly, and the `service_role` cell is the
+interesting one: the secret key holds **no** `SELECT` on the session token. The public path resolves a
+token through `get_check_in_session()`, which returns the event's display copy and never the row, so
+the key has no reason to be able to read a live capability (D41).
 
 **`authenticated` holds `SELECT` and nothing else, on every table.** Every write — including a
 simple name correction — happens through a `SECURITY DEFINER` RPC that begins with an
@@ -1806,9 +1815,22 @@ world-executable by accident. `S/D` = `SECURITY DEFINER`, `S/I` = `SECURITY INVO
 | `new_certificate_token()` | **S/I** | `''` | ❌ | ❌ | ❌ | ❌ | none needed | **Granted to nobody.** Evaluated only by the table owner, as the column default, and by the definer routines that insert. |
 | `get_certificate(text)` | S/D | `''` | ❌ | ❌ | ❌ | ✅ | none — server-only by ACL | The public certificate read. `service_role` only, for the same reason as `register_for_event`: the page renders on our own server (§ 8.6). Returns the recipient's name and the event's display fields — never a phone number, an age or an id — and **zero rows for every negative case**, so it cannot distinguish "no such token" from "did not attend". |
 
-**Twenty-six routines, and that is the whole list.** The public *read* of event display copy is not an
-RPC — it is a hand-written DTO query in `lib/data/public.ts` using the secret key (§ 8.6), so it
-adds no routine. If a future change introduces one, it must be added to this matrix in the same
+| `registration_identity_key(text)` | **S/I** | `''` | ❌ | ❌ | ❌ | ❌ | none needed | **Granted to nobody.** The canonical form of a participant name (D39). Evaluated only by the table owner, as the expression of `registrations_active_person_uidx`, and by the definer routines that match on it. |
+| `new_check_in_token()` | **S/I** | `''` | ❌ | ❌ | ❌ | ❌ | none needed | **Granted to nobody.** Mirrors `new_certificate_token()`; a separate routine because the two are different capability classes with different lifetimes (D41). |
+| `open_check_in_session(uuid,boolean)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Opens check-in, or — with `p_rotate` — replaces the live token. Idempotent when not rotating, so tapping `Abrir` twice does not invalidate the QR on the projector. Audits only a real state change, and **never puts the token in `metadata`**. |
+| `close_check_in_session(uuid)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Revokes every copy of the public URL in the same transaction. Answers `false` rather than raising when check-in was already shut. |
+| `get_check_in_session(text)` | S/D | `''` | ❌ | ❌ | ❌ | ✅ | none — server-only by ACL | Resolves a session token into the event's **public display copy** and nothing else — no id, no expiry, no opener. `service_role` only, like `get_certificate`. **Zero rows** for unknown, closed and expired alike. |
+| `self_check_in(text,text,text,smallint)` | S/D | `''` | ❌ | ❌ | ❌ | ✅ | none — server-only by ACL; the **session** is the capability | The public attendance write (D40, D42). `service_role` only, so Turnstile cannot be bypassed. Returns **one word out of six** and no participant data. Refuses anything but a `confirmed` registration, so it cannot bypass I1. A number with no eligible registration and one shared by five are answered identically. |
+| `find_certificate(text,text,smallint)` | S/D | `''` | ❌ | ❌ | ❌ | ✅ | none — server-only by ACL | The certificate portal's lookup (D45). `service_role` only. Returns a state and, on an exact match, the **existing** `certificate_token` — which the Server Action puts straight into a `Location` header. Applies `get_certificate`'s own eligibility predicate, so it is an identification layer and not a second way in. |
+
+**Thirty-three routines, and that is the whole list.** The public *read* of event display copy is not
+an RPC — it is a hand-written DTO query in `lib/data/public.ts` using the secret key (§ 8.6), so it
+adds no routine.
+
+`service_role` may execute exactly **five**: `register_for_event`, `get_certificate`,
+`get_check_in_session`, `self_check_in` and `find_certificate`. That list is the secret key's entire
+executable surface, and `12-table-acl.sql` asserts it as a set — a sixth entry cannot appear without
+somebody editing the assertion, which is the review such a grant needs. If a future change introduces one, it must be added to this matrix in the same
 commit.
 
 Reading the matrix:
@@ -1892,13 +1914,23 @@ backend-for-frontend posture and is mitigated in depth:
 ### 8.7 Duplicate rule, restated as SQL
 
 ```sql
-create unique index registrations_active_phone_uidx
-  on public.registrations (event_id, phone_e164)
+create unique index registrations_active_person_uidx
+  on public.registrations (event_id, phone_e164, public.registration_identity_key(full_name))
   where status <> 'cancelled';
 ```
 
-Per event, keyed on the canonical E.164 phone, ignoring cancelled rows. Rationale and UX in
-[PRODUCT-SPEC.md § 9](./PRODUCT-SPEC.md).
+Per event, keyed on the canonical E.164 phone **and the canonical name**, ignoring cancelled rows.
+
+The third column is an index **expression**, not a stored column: the canonical name is derived from
+`full_name`, which is already there, so migration 16 persists nothing new about a participant. The
+expression is `registration_identity_key()` — whitespace-collapsed, accent-folded, lower-cased — and it
+is the single implementation, shared by this index, by `register_for_event()`, by `self_check_in()` and
+by `find_certificate()`.
+
+**Why the name is in the key at all**: one telephone number legitimately belongs to several
+registrations in this audience, and keyed on the number alone the second child in a family is refused.
+**Why age is not**: it adds no discriminating power and would turn an age typo into a second seat
+(D39). Rationale and UX in [PRODUCT-SPEC.md § 9](./PRODUCT-SPEC.md).
 
 ---
 
@@ -1959,7 +1991,7 @@ fail-closed (§ 9.1). Everything else is optional defense in depth.
 | 1 | **Turnstile** | **Required** | Every public submission. The primary and sufficient control. |
 | 2 | Vercel Firewall rate-limit rule on `POST /` | Optional | Volumetric protection. Requires a Pro plan. Tune **generously** — see § 9.3. |
 | 3 | Supabase Auth built-in limits | Automatic | Sign-in: 30 requests / 5 min by default; OTP: one per 60 s per user. Adjustable in the dashboard. |
-| 4 | `registrations_active_phone_uidx` | Structural | A single phone can occupy at most one seat regardless of how many times it is submitted. |
+| 4 | `registrations_active_person_uidx` | Structural | A single PERSON — event, canonical phone, canonical name — can occupy at most one seat regardless of how many times they are submitted. A shared telephone number is a household, not an attack (D39). |
 
 Layer 4 is worth emphasising: it is race-free by construction and it caps the *damage* of any volume
 of attempts, independently of how many requests get through. An attacker who defeats every other

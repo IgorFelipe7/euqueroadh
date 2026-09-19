@@ -11,7 +11,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(155);
+select plan(180);
 
 create temp table expected_table_acl (
   tbl       text    not null,
@@ -36,7 +36,12 @@ select t.tbl, g.grantee, p.privilege,
                -- Migration 14. They follow the registrations rule exactly: `authenticated` reads
                -- under RLS, and neither anon nor service_role reaches them at all — the secret key
                -- must not learn who won any more than it can learn who registered.
-               ('raffles'), ('raffle_draws')) as t(tbl)
+               ('raffles'), ('raffle_draws'),
+               -- Migration 17. It follows the registrations rule exactly: `authenticated` reads under
+               -- RLS, and neither anon nor service_role reaches it at all — the secret key resolves a
+               -- session through a definer routine that returns the event's display copy, never the
+               -- row, so it has no reason to hold SELECT on the token.
+               ('check_in_sessions')) as t(tbl)
  cross join (values ('anon'), ('authenticated'), ('service_role')) as g(grantee)
  cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'),
                     ('TRUNCATE'), ('REFERENCES'), ('TRIGGER'), ('MAINTAIN')) as p(privilege);
@@ -104,11 +109,22 @@ select set_eq(
       cross join lateral aclexplode(p.proacl) x
      where n.nspname = 'public' and x.grantee = 'service_role'::regrole
        and x.privilege_type = 'EXECUTE'$$,
-  -- TWO routines now, and both are the same shape: a narrow, server-rendered public path that the
-  -- browser never calls directly. `get_certificate` reads one name by an unguessable token and
-  -- returns zero rows for every negative case (RAFFLE-AND-CERTIFICATE-SPEC.md section 4.3).
-  $$values ('register_for_event'), ('get_certificate')$$,
-  'service_role may execute exactly the two public-path routines, and nothing else');
+  -- FIVE routines now, and every one of them is the same shape: a narrow, server-rendered public path
+  -- that the browser never calls directly, returning a closed set of states and no participant record.
+  --
+  --   * `register_for_event`   — the public write path (§ 5).
+  --   * `get_certificate`      — one name by an unguessable token; zero rows for every negative case
+  --                              (RAFFLE-AND-CERTIFICATE-SPEC.md § 4.3).
+  --   * `get_check_in_session` — the event's display copy by a session token; zero rows for unknown,
+  --                              closed and expired alike (migration 18).
+  --   * `self_check_in`        — the public attendance write; returns one word out of six.
+  --   * `find_certificate`     — identification over the EXISTING certificate token (migration 19).
+  --
+  -- This list is the boundary itself: the secret key's whole executable surface, enumerated. A sixth
+  -- entry cannot appear without someone editing this line, and that is the review the grant needs.
+  $$values ('register_for_event'), ('get_certificate'), ('get_check_in_session'),
+           ('self_check_in'), ('find_certificate')$$,
+  'service_role may execute exactly the five public-path routines, and nothing else');
 
 select * from finish();
 rollback;

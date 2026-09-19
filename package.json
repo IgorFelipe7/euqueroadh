@@ -19,7 +19,7 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:test:sql": "supabase test db",
-    "db:test:node": "node --test --test-concurrency=1 supabase/tests/node/concurrency.test.mts supabase/tests/node/authorization.test.mts supabase/tests/node/registration.test.mts",
+    "db:test:node": "node --test --test-concurrency=1 supabase/tests/node/concurrency.test.mts supabase/tests/node/authorization.test.mts supabase/tests/node/registration.test.mts supabase/tests/node/check-in.test.mts",
     "db:test": "npm run db:test:sql && npm run db:test:node",
     "validate": "npm run lint && npm run typecheck && npm run test"
   },

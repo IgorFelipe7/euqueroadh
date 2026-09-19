@@ -124,6 +124,66 @@ async function lastSeatScenario(waitlistEnabled: boolean) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Twenty DIFFERENT people on one telephone number, simultaneously.
+//
+// The case migration 16 exists for, under contention. Six seats and twenty people means six confirmed
+// and fourteen waitlisted, and the two invariants that could plausibly break here are I1 (never
+// oversold) and I4 (no two people share a queue position) — both of which are about the event row,
+// which every one of these transactions serialises on.
+// ---------------------------------------------------------------------------
+test('a shared telephone number allocates normally under contention', async () => {
+  const control = await connect();
+  await cleanup(control);
+
+  const admin = await createAdmin(control, 'organizador');
+  const eventId = await createEvent(control, { capacity: 6, state: 'open', waitlistEnabled: true });
+  const sharedPhone = phone(4343);
+
+  const clients = await openConnections(20);
+  try {
+    const results = await Promise.all(
+      clients.map((client, i) =>
+        tryCall(client, REGISTER_SQL, [eventId, `Pessoa ${i + 1} Souza`, 20, sharedPhone]),
+      ),
+    );
+
+    assert.deepEqual(
+      results.filter((r) => !r.ok).map((f) => `${f.sqlstate}: ${f.message}`),
+      [],
+      'twenty distinct people on one number is a household, not an error',
+    );
+
+    const tally = outcomes(results);
+    assert.equal(tally.confirmed, 6, 'exactly the six seats were issued');
+    assert.equal(tally.waitlisted, 14, 'and the rest queued');
+    assert.equal(tally.already_registered ?? 0, 0, 'nobody was mistaken for somebody else');
+
+    const rows = await control.query<{ count: string }>(
+      `select count(*)::text from public.registrations
+        where event_id = $1 and phone_e164 = $2 and status <> 'cancelled'`,
+      [eventId, sharedPhone],
+    );
+    assert.equal(Number(rows.rows[0].count), 20, 'twenty rows share one telephone number');
+
+    const c = await counters(control, eventId);
+    assert.equal(c.confirmed, 6, 'I1: confirmed_count never passed capacity');
+    assert.equal(c.waitlist, 14, 'the waitlist counter agrees');
+
+    const ranks = await control.query<{ ranks: string }>(
+      `select count(distinct waitlist_rank)::text as ranks from public.registrations
+        where event_id = $1 and status = 'waitlisted'`,
+      [eventId],
+    );
+    assert.equal(Number(ranks.rows[0].ranks), 14, 'I4: fourteen distinct queue positions, no reuse');
+    assert.equal(await counterDrift(control, admin), 0, 'I2: no drift');
+  } finally {
+    await closeAll(clients);
+    await cleanup(control);
+    await control.end();
+  }
+});
+
 test('50 concurrent registrations for 10 seats, waitlist ON', async () => {
   await lastSeatScenario(true);
 });
@@ -133,7 +193,13 @@ test('50 concurrent registrations for 10 seats, waitlist OFF', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// The same phone, twenty times, simultaneously.
+// The same PERSON, twenty times, simultaneously.
+//
+// Migration 16 narrowed the duplicate key from the telephone number to the person, so this scenario
+// had to be re-stated to keep testing what it was written to test: twenty simultaneous submissions of
+// ONE person must produce ONE row. The companion test below covers the case the old shape used to
+// exercise by accident — twenty DIFFERENT people on one number — which is now a legitimate household
+// and must allocate normally.
 // ---------------------------------------------------------------------------
 test('concurrent duplicate submissions create exactly one registration', async () => {
   const control = await connect();
@@ -146,8 +212,16 @@ test('concurrent duplicate submissions create exactly one registration', async (
   const clients = await openConnections(20);
   try {
     const results = await Promise.all(
+      // The same name every time — and spelled differently on purpose, because the canonical form is
+      // what the unique index is built over. If normalization were applied anywhere but inside the
+      // lock, these twenty would race past each other.
       clients.map((client, i) =>
-        tryCall(client, REGISTER_SQL, [eventId, `Pessoa ${i + 1}`, 20, sharedPhone]),
+        tryCall(client, REGISTER_SQL, [
+          eventId,
+          ['Ana Souza', 'ana souza', 'ANA SOUZA', '  Ana   Souza  '][i % 4],
+          20,
+          sharedPhone,
+        ]),
       ),
     );
 

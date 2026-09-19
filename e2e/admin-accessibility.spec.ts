@@ -16,7 +16,14 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
-import { resetActiveEvent, restoreSeedState, activeEventId, withDb } from './support/database';
+import {
+  activeEventId,
+  openCheckInSession,
+  purgeCheckInSessions,
+  resetActiveEvent,
+  restoreSeedState,
+  withDb,
+} from './support/database';
 import { createActiveAdmin, signIn, testEmail } from './support/local';
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -98,6 +105,7 @@ test.describe('the admin has no accessibility violations', () => {
 
   test.afterAll(async () => {
     await context?.close();
+    await purgeCheckInSessions();
     await restoreSeedState();
   });
 
@@ -125,6 +133,27 @@ test.describe('the admin has no accessibility violations', () => {
         await scan(admin, `${path} at ${width}px`);
       }
     }
+  });
+
+  test('the door screen and the projected wall pass', async () => {
+    // `/admin/presenca` gained the self check-in panel, and the wall is a whole new composition in the
+    // event's dark identity rather than the admin's light one — which is exactly the kind of exception
+    // that ships with a contrast failure nobody scanned for.
+    await openCheckInSession();
+
+    for (const [width, height] of WIDTHS) {
+      await admin.setViewportSize({ width, height });
+
+      await admin.goto('/admin/presenca');
+      await expect(admin.getByText('Check-in do evento')).toBeVisible();
+      await scan(admin, `/admin/presenca at ${width}px`);
+    }
+
+    // The wall is only ever shown on a large screen, so it is scanned at projector width alone.
+    await admin.setViewportSize({ width: 1440, height: 900 });
+    await admin.goto('/admin/presenca/mural');
+    await expect(admin.getByText('Aponte a câmera do seu celular')).toBeVisible();
+    await scan(admin, '/admin/presenca/mural at 1440px');
   });
 
   test('the sign-in page passes in both of its steps', async ({ page }) => {

@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(21);
+select plan(23);
 
 -- The seeded production event is already the active one, so this fixture is inactive: I5 is
 -- asserted against the seed rather than against another fixture.
@@ -111,14 +111,31 @@ select throws_ok(
   'a waitlisted registration without a rank is impossible');
 
 -- ------------------------------------------------------- I3: the duplicate rule ----
+-- Migration 16 narrowed I3 from the PHONE to the PERSON: one household legitimately shares one
+-- telephone number, and the old rule silently refused everybody in it but the first.
 insert into public.registrations (event_id, full_name, age, phone_e164, status)
 values ('11111111-1111-1111-1111-111111111111', 'Ana Souza', 20, '+5519991234567', 'confirmed');
 
 select throws_ok(
   $$insert into public.registrations (event_id, full_name, age, phone_e164, status)
-    values ('11111111-1111-1111-1111-111111111111', 'Outra Pessoa', 30, '+5519991234567', 'confirmed')$$,
+    values ('11111111-1111-1111-1111-111111111111', 'Ana Souza', 30, '+5519991234567', 'confirmed')$$,
   '23505', null,
-  'I3: a second active registration for the same phone is impossible');
+  'I3: a second active registration for the SAME person is impossible - and age is not part of the '
+  'key, so a different age does not make a different person');
+
+-- The normalization is part of the rule, not a courtesy to the caller: the index is built over
+-- registration_identity_key(full_name), so case, accents and whitespace cannot be used to get a
+-- second seat for one person.
+select throws_ok(
+  $$insert into public.registrations (event_id, full_name, age, phone_e164, status)
+    values ('11111111-1111-1111-1111-111111111111', '  ANA   SOUZA ', 20, '+5519991234567', 'confirmed')$$,
+  '23505', null,
+  'I3 is accent-, case- and whitespace-insensitive');
+
+select lives_ok(
+  $$insert into public.registrations (event_id, full_name, age, phone_e164, status)
+    values ('11111111-1111-1111-1111-111111111111', 'Bruno Souza', 17, '+5519991234567', 'confirmed')$$,
+  'I3 permits a DIFFERENT person on the same telephone number - the household case');
 
 update public.registrations set status = 'cancelled' where phone_e164 = '+5519991234567';
 

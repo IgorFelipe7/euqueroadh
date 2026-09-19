@@ -498,6 +498,17 @@ element; everything else is small. There is no seal, no border filigree, no ribb
 
 ### 4.6 Distribution
 
+> **Superseded as the PRIMARY method by [D45](./DECISIONS.md).** The per-row actions below are
+> unchanged and still work; they are now the **fallback**. What replaced them is one public address —
+> `euqueroadh.com/certificado` — that the organizer posts once, and that identifies each participant by
+> telephone number and first name before redirecting them to the very token route described here.
+>
+> The reason is not that the reasoning below was wrong. It is that "the organizer distributes the
+> links" was costed: three hundred links, copied and sent one at a time, means most people never
+> receive one and the ones who do receive them through a chain of forwards in which a personal
+> capability is pasted into group chats. The disclosure § 4.1 refused to build is the disclosure the
+> distribution method produced anyway, at greater cost. See PRODUCT-SPEC.md § 15.
+
 The system sends no messages (D2), so the organizer does. `/admin/inscricoes` gains, per row:
 
 - **`Copiar link`** — the certificate URL to the clipboard.
@@ -511,10 +522,13 @@ Only rows that satisfy § 4.2 show these actions, so an organizer cannot send a 
 
 ### 4.7 Exposure
 
-- `robots.ts` gains `Disallow: /certificado/`, and the page sets `robots: { index: false, follow:
-  false }`. A personal document must not be indexed.
-- The page and both image routes send `Cache-Control: private, no-store`. A shared CDN must never
-  hold one person's certificate.
+- `robots.ts` disallows `/certificado` and `/presenca`, both pages set
+  `robots: { index: false, follow: false }`, and `next.config.ts` sends `X-Robots-Tag: noindex,
+  nofollow, noarchive` on both subtrees. A personal document must not be indexed; neither must an
+  identification form over personal data, nor a live check-in capability.
+- The page, both image routes, the portal and the check-in page all send
+  `Cache-Control: private, no-store`. A shared CDN must never hold one person's certificate, one
+  person's identification attempt, or a session token.
 - The public CSP already covers these routes; they need no relaxation. The page is static content and
   two images.
 - The page renders a participant-supplied name, so it renders it as text, through React, with no

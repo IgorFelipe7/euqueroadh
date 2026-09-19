@@ -142,3 +142,76 @@ export function logRegistrationEvent(fields: RegistrationLogFields): void {
     console.info(line);
   }
 }
+
+/* ------------------------------------------------------------------------------------------------
+ * Guest self-service — venue check-in and the certificate portal
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * The closed set of events the two guest-facing self-service surfaces emit.
+ *
+ * **Both surfaces are identification endpoints, so the log is where a privacy failure would be most
+ * durable and least visible.** These names are therefore coarser than the outcomes the code actually
+ * computes, and deliberately so:
+ *
+ *   * `checkin.needs_identification` covers both `need_name` and `need_age`. Recording which of the
+ *     two would write down how far a prober got on a telephone number, one line per attempt, into a
+ *     system that is retained for longer and read by more people than the registration itself.
+ *   * `checkin.not_identified` covers an unknown number, a wrong name, a waitlisted person and an
+ *     unbroken ambiguity — exactly the distinctions § 8 of the launch brief forbids the product from
+ *     drawing anywhere.
+ *
+ * A volume of `checkin.not_identified` is the operational signal that matters at a door ("the queue
+ * is failing, open the manual screen"), and it is fully available without any of that.
+ */
+export type GuestEvent =
+  | 'checkin.validation_failed'
+  | 'checkin.turnstile_failed'
+  | 'checkin.confirmed'
+  | 'checkin.already_present'
+  | 'checkin.needs_identification'
+  | 'checkin.not_identified'
+  | 'checkin.session_invalid'
+  | 'checkin.infrastructure_error'
+  | 'certificate.validation_failed'
+  | 'certificate.turnstile_failed'
+  | 'certificate.disabled'
+  | 'certificate.found'
+  | 'certificate.needs_age'
+  | 'certificate.not_found'
+  | 'certificate.infrastructure_error';
+
+/**
+ * Every field here is a machine code or a measurement.
+ *
+ * There is deliberately **no** field for a name, an age, a telephone number, a check-in session token
+ * or a certificate token — and no `registrationId` either, which the registration log does carry. A
+ * registration identifier is the key to a row an organizer may need to find; on these two surfaces it
+ * would be a durable record of *which participant* was identified from which attempt, which is the
+ * one thing a self-service identification log must not accumulate. The enforcement is structural:
+ * this interface has no field such a value could be assigned to.
+ */
+export interface GuestLogFields {
+  readonly event: GuestEvent;
+  readonly durationMs?: number;
+  /** Present only when the visitor is shown a correlation code. */
+  readonly correlationId?: string;
+  /** Which fields failed validation — names only, never values. */
+  readonly fields?: readonly string[];
+  /** Cloudflare's own machine codes, such as `timeout-or-duplicate`. Never the token. */
+  readonly turnstileCodes?: readonly string[];
+}
+
+/** One structured line per attempt. `console` is the transport; Vercel's runtime log is the sink. */
+export function logGuestEvent(fields: GuestLogFields): void {
+  const line = JSON.stringify({ ...fields, at: new Date().toISOString() });
+
+  if (
+    fields.event === 'checkin.infrastructure_error' ||
+    fields.event === 'certificate.infrastructure_error'
+  ) {
+    console.error(line);
+  } else {
+    console.info(line);
+  }
+}

@@ -29,11 +29,13 @@ import { failed, ok, type AdminActionState } from '@/lib/admin/state';
 import { getAdminEvent } from '@/lib/data/admin/event';
 import {
   cancelRegistration,
+  closeCheckInSession,
   createRaffle,
   deleteRaffle,
   deleteRegistration,
   drawRaffleWinner,
   editRegistration,
+  openCheckInSession,
   promoteFromWaitlist,
   promoteRegistration,
   purgeEventRegistrations,
@@ -488,6 +490,80 @@ export async function setAttendanceAction(
     return ok(present ? ADMIN_COPY.attendance.present : 'Presença desfeita.', {
       attendedAt: result.value.attendedAt,
     });
+  });
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Check-in sessions (migration 17)
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * The two revalidations a session change needs, and the reason the public page is not among them.
+ *
+ * `/admin/presenca` renders the panel and `/admin/presenca/mural` renders the QR, so both have to
+ * re-read. `/` shows nothing about check-in — a visitor to the event page must not learn whether the
+ * doors are open, and D19's rule about not publishing operational numbers covers this one too.
+ */
+function revalidateAfterCheckInSession(): void {
+  revalidatePath(ROUTES.adminAttendance);
+  revalidatePath(ROUTES.adminCheckInWall);
+}
+
+/**
+ * Opens check-in, or mints a replacement token.
+ *
+ * `rotate` arrives as a form flag and is the only difference between the two. It is re-read here rather
+ * than being two actions because the RPC is one routine: the idempotent open and the deliberate
+ * rotation differ by whether an existing live session is kept, and splitting them in this layer would
+ * invite the two halves to drift apart.
+ */
+export async function openCheckInAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const event = await getAdminEvent();
+    if (!event) return failed('event_not_found', adminErrorMessage({ code: 'event_not_found' }));
+
+    const rotate = flag(formData, 'rotate');
+
+    // Rotating invalidates a QR that a room may already be looking at, so it carries the same explicit
+    // acknowledgement as the other irreversible controls. Opening does not: it is the safe direction.
+    if (rotate && !flag(formData, 'acknowledged')) {
+      return failed('unavailable', 'Confirme que o QR atual deve ser substituído.');
+    }
+
+    const result = await openCheckInSession(event.id, rotate);
+    if (!result.ok) return toState(result.error);
+
+    revalidateAfterCheckInSession();
+
+    // The token is NOT returned to the browser here. The panel and the wall both re-read it from the
+    // database on the render this revalidation triggers, so the capability reaches the page through
+    // one path — a server read — rather than two.
+    return ok(rotate ? ADMIN_COPY.checkIn.rotated : ADMIN_COPY.checkIn.opened);
+  });
+}
+
+/** Closes check-in. Every copy of the public URL is inert the moment this commits. */
+export async function closeCheckInAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const event = await getAdminEvent();
+    if (!event) return failed('event_not_found', adminErrorMessage({ code: 'event_not_found' }));
+
+    if (!flag(formData, 'acknowledged')) {
+      return failed('unavailable', 'Confirme que o check-in deve ser fechado.');
+    }
+
+    const result = await closeCheckInSession(event.id);
+    if (!result.ok) return toState(result.error);
+
+    revalidateAfterCheckInSession();
+
+    return ok(result.value ? ADMIN_COPY.checkIn.closed : ADMIN_COPY.checkIn.alreadyClosed);
   });
 }
 

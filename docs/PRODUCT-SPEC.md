@@ -246,7 +246,7 @@ Exactly six terminal outcomes. Every one has a designed screen. There is no seve
 | --- | --- | --- |
 | `confirmed` | Registration open and `confirmed_count < capacity` | Yes, status `confirmed` |
 | `waitlisted` | Registration open, at capacity, waitlist enabled | Yes, status `waitlisted` |
-| `already_registered` | An active registration already exists for this phone at this event | No new row |
+| `already_registered` | An active registration already exists for this **person** — same event, same canonical phone, same canonical name | No new row |
 | `full` | At capacity, waitlist disabled | No |
 | `closed` | `registration_state <> 'open'` | No |
 | `invalid` / `error` | Validation failure, anti-abuse failure, or an unexpected fault | No |
@@ -466,14 +466,30 @@ Mechanism: [DATABASE-SECURITY.md § 6.5](./DATABASE-SECURITY.md).
 
 ## 9. Duplicate policy
 
-**Rule:** one active registration per `(event, canonical phone)`. **[R]**
+**Rule:** one active registration per `(event, canonical phone, canonical name)`. **[R]**
 
-**Why phone and not name:** names are not unique (two `João Silva`s may both attend) and not stable
-(typos, abbreviations). The phone number is the organizers' only contact channel and their de-facto
-identity key.
+The canonical name is `registration_identity_key(full_name)` — whitespace-collapsed, accent-folded,
+lower-cased — so `João Silva`, `joao silva` and `  JOÃO   SILVA ` are one person. It is one
+implementation, shared by the unique index, the allocation function and both guest identification
+flows; `lib/domain/identity.ts` is its TypeScript half and a test asserts the two agree.
 
-**On a duplicate submission** the system returns `already_registered` with the existing status and
-**does not modify the stored row**.
+**Why the phone is in the key:** it is the organizers' only contact channel and their de-facto
+identity anchor.
+
+**Why the name is in it too:** one telephone number legitimately belongs to several registrations.
+The audience is `PARA JOVENS` and a family arriving together routinely shares one phone. Keyed on the
+number alone, the second child is refused with `already_registered` and has to telephone the
+organization — which is not a rare edge but the ordinary shape of this audience (D39).
+
+**Why age is deliberately NOT in the key:** two people sharing a telephone number *and* a full name to
+the letter is not a case this event has, so age adds no discriminating power — while it does add a
+failure. Somebody who types `21` instead of `12`, submits, and corrects themselves would otherwise
+become a second row holding a second seat. Age keeps its job as a *disambiguator* when the check-in and
+certificate flows cannot tell two candidates apart; it is not part of who somebody is.
+
+**On a duplicate submission** — the same person, by that key — the system returns
+`already_registered` with the existing status and **does not modify the stored row**. A *different*
+person on the same telephone number is not a duplicate and is allocated a seat normally.
 
 **Why re-submission does not update the name or age:** if it did, anyone who knows a phone number
 could overwrite that person's registration data. The correction path is deliberately human: the
@@ -484,6 +500,11 @@ also adds state for a rare case.
 **Cancelled registrations do not block re-registration.** The unique index is partial
 (`WHERE status <> 'cancelled'`), so someone who cancelled — or was removed — can register again and
 will be allocated a seat normally.
+
+**Shared telephone numbers are supported, and are load-bearing downstream.** Because a number may
+carry several people, neither self check-in nor the certificate portal can identify somebody from a
+number alone; both ask for a first name, and then an age, until exactly one candidate remains
+(§ 14, § 15).
 
 **Side effect used deliberately:** because duplicate detection happens inside the same locked
 transaction as allocation, the whole registration operation is **idempotent**. A retry after a lost
@@ -619,7 +640,9 @@ V1 is done when every statement below is demonstrably true. Each maps to a test 
 1. With `capacity = N`, launching `M > N` concurrent registrations with distinct valid phones yields
    **exactly** N confirmed and `M − N` waitlisted (waitlist on) or refused (waitlist off), with
    `confirmed_count = N` and no constraint violation.
-2. Submitting the same phone twice creates exactly one row; the second returns `already_registered`.
+2. Submitting the same **person** twice creates exactly one row; the second returns
+   `already_registered`. Submitting a different person on the same telephone number creates a second
+   row (§ 9).
 3. An anonymous Supabase client cannot read a single row of `registrations` or `events`.
 4. An authenticated user who is not in `admin_users` cannot read a single row of `registrations`,
    including by invoking an admin Server Action directly.
@@ -680,3 +703,114 @@ V1 is done when every statement below is demonstrably true. Each maps to a test 
 29. The organizers have recorded their answer to the minors question (§ 12.1, Q8).
 30. A real capacity is configured and registrations are deliberately opened (§ 8.1.1).
 31. Production SMTP is configured and a real administrator sign-in has been performed end to end.
+
+---
+
+## 14. Self check-in at the venue
+
+The guest confirms their own arrival by scanning a QR. It replaces nothing: the organizer's manual
+screen (`/admin/presenca`) is unchanged and remains the way every exception is resolved (D44).
+
+### 14.1 The session
+
+Self check-in is only reachable while an administrator has **opened check-in** for the event. Opening
+mints a 160-bit token; the public URL is `/presenca/<token>`; closing it makes every copy of that URL
+inert immediately, including every screenshot of the projected QR. A session also expires on its own
+after twelve hours, so one an organizer forgets to close stops being a capability by itself (D40).
+
+At most one session is open per event, as a database constraint rather than a convention — two live
+QR codes, one of which the operator believes they shut, is the failure that rule exists to prevent.
+
+An administrator can: open check-in, show the QR full-screen, close it, and generate a replacement QR
+if the current one leaks. Opening twice is idempotent and does **not** change the QR on the projector.
+
+### 14.2 What the guest does
+
+Mobile-first, no login, no account, no e-mail, no OTP, no registration number.
+
+1. **Telephone number.** If it identifies exactly one confirmed registration, they are done.
+2. **First name**, if it did not. The prompt is `Precisamos confirmar mais uma informação.`
+3. **Age**, if the name did not either. The prompt is `Só mais uma confirmação.`
+
+If three fields still do not identify exactly one eligible registration, the guest is shown
+`Não foi possível confirmar por aqui` and sent to the team at the entrance.
+
+**The flow is identical for a telephone number nobody registered.** It is asked for a first name, then
+an age, then refused — the same prompts, in the same order, with the same words that a number shared by
+five people produces. That is deliberate and is the privacy property of the whole feature (D42): there
+is no endpoint here that answers "who is registered under this number".
+
+### 14.3 Eligibility, idempotency and states
+
+* Only `status = 'confirmed'` may self-confirm. A waitlisted person at the door is a **promotion** — a
+  capacity-checked, audited, authenticated act — so they receive the generic refusal and an organizer
+  handles it (D43).
+* A cancelled or unknown registration receives the same generic refusal.
+* Checking in twice is not an error: `✓ Sua presença já está confirmada.` `attended_at` is the arrival
+  time and is never rewritten.
+* An invalid, closed or expired session shows `CHECK-IN ENCERRADO` and discloses nothing.
+
+### 14.4 The household loop
+
+After a successful check-in the panel offers **`Confirmar outra pessoa deste mesmo celular`**. It keeps
+the telephone number, clears the name, and returns to the first-name step without a page load — so the
+second person in a family is one tap away rather than one reload. No other person's name ever reaches
+the device.
+
+### 14.5 The certificate hand-off
+
+The success panel says the certificate will be available after the event, and names the address —
+`euqueroadh.com/certificado` — as **text**. No certificate token is generated, sent or exposed at
+check-in (§ 15).
+
+### 14.6 The wall
+
+A full-screen surface for a TV, a projector or a monitor at the entrance: the instruction, one very
+large QR with the URL under it in readable form, and the number of people who have arrived. It carries
+**no participant names**, ever. The count refreshes every four seconds and, when it rises, the number
+and one bead of the counting rail move once and stop. If the count stops updating the wall says so and
+keeps the last number; the QR is static markup and keeps working regardless.
+
+## 15. Certificate retrieval
+
+One public address — `euqueroadh.com/certificado` — that the organizer posts once, to a WhatsApp group
+or an Instagram story. It is an **identification layer over the existing per-registration token**, not a
+second way in: a successful lookup redirects to `/certificado/<token>`, which is the same unguessable
+route the admin's copy-link has always produced (D45).
+
+### 15.1 Availability
+
+Nothing is retrievable until an administrator switches `certificates_enabled` on, after the event.
+Before that the page renders one sentence — `Os certificados deste evento ainda não foram liberados.` —
+and **mounts no form at all**, so no lookup can be attempted in the window between the event ending and
+the switch being thrown (D46).
+
+### 15.2 Identification
+
+Telephone number **and** first name, together, from the start — deliberately stronger than venue
+check-in, because this address is reachable for as long as the site exists with no operator present,
+where a check-in session is alive for one evening. Age is asked for only when those two leave more than
+one candidate.
+
+### 15.3 Eligibility
+
+A certificate is available only for a registration that is `confirmed`, has `attended_at` set, and
+belongs to an event whose `certificates_enabled` is on — the identical predicate the tokenized
+certificate route applies. A certificate of participation for somebody who did not participate is a
+false document, and no amount of correct identification produces one.
+
+### 15.4 Failure
+
+One sentence for every unsuccessful case there is — wrong number, wrong name, a person who did not
+attend, a cancelled registration, an unbroken ambiguity, a switch that is off:
+
+> Não foi possível localizar um certificado com essas informações.
+> Confira os dados informados ou entre em contato com a organização.
+
+It must never grow a second sentence naming which part did not match. "Encontramos uma inscrição, mas
+você não esteve presente" is a disclosure about a named person to whoever typed their number.
+
+### 15.5 What remains
+
+The admin's per-registration copy-link and WhatsApp shortcut are unchanged and remain valid. They are
+now the **fallback**; the portal is the primary distribution method.
