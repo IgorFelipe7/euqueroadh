@@ -63,7 +63,10 @@ There is no third audience. There are no participant accounts, no speaker portal
 
 Not built, not stubbed, not designed on paper:
 
-- Payments, tickets, seat maps, QR check-in, attendance tracking.
+- Payments, tickets, seat maps, QR check-in.
+- ~~Attendance tracking~~ — **superseded.** Attendance shipped as one nullable timestamp plus a
+  check-in screen, because the raffle draws from the people in the room and a certificate of
+  participation must be true (RAFFLE-AND-CERTIFICATE-SPEC.md § 1). QR codes remain out of scope.
 - E-mail or WhatsApp automation of any kind, including waitlist notifications.
 - Participant accounts, self-service editing or self-service cancellation.
 - A content management system for event copy. Event text is seeded by migration; only capacity,

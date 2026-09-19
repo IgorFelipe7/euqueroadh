@@ -31,13 +31,23 @@ const DEBOUNCE_MS = 300;
 
 export function SearchField({
   initialValue,
-  status,
-  sort,
+  status = '',
+  sort = '',
+  label = ADMIN_COPY.registrations.searchLabel,
+  autoFocus = false,
 }: {
   initialValue: string;
   /** The current status filter, or '' for the default — carried through so search does not reset it. */
-  status: string;
-  sort: string;
+  status?: string;
+  sort?: string;
+  /** The door screen labels the same control differently; the registrations list keeps the default. */
+  label?: string;
+  /**
+   * The door screen only. An organizer arrives there with a name already in their head and a queue
+   * in front of them, so the caret belongs in the field. Everywhere else an autofocus would steal
+   * the page's first landmark from a screen reader for no gain.
+   */
+  autoFocus?: boolean;
 }) {
   const [value, setValue] = useState(initialValue);
   /** The last term that has actually reached the URL. */
@@ -85,7 +95,7 @@ export function SearchField({
   return (
     <div className="flex w-full flex-col gap-1 sm:max-w-80">
       <label htmlFor={fieldId} className="text-hint font-semibold text-admin-ink">
-        {ADMIN_COPY.registrations.searchLabel}
+        {label}
       </label>
       <input
         id={fieldId}
@@ -94,6 +104,7 @@ export function SearchField({
         inputMode="search"
         autoComplete="off"
         value={value}
+        autoFocus={autoFocus}
         onChange={(field) => setValue(field.target.value)}
         placeholder={ADMIN_COPY.registrations.searchPlaceholder}
         aria-busy={isPending}

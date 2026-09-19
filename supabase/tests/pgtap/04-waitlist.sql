@@ -106,7 +106,7 @@ select is((select waitlist_rank from public.registrations where phone_e164 = '+5
 -- ---------------------------------------------------- turning the waitlist off ----
 select is(
   (select waitlist_enabled from public.update_event_settings(
-     '66666666-6666-6666-6666-666666666666', 2, false, 'open'::public.registration_state,
+     '66666666-6666-6666-6666-666666666666', 2, false, 'open'::public.registration_state, null::boolean,
      (select settings_version from public.events where id = '66666666-6666-6666-6666-666666666666'))),
   false, 'an administrator disables the waitlist');
 
@@ -133,7 +133,7 @@ select is((select waitlist_rank from public.registrations where phone_e164 = '+5
 -- ---------------------------------------------------- turning it back on ----
 select is(
   (select waitlist_enabled from public.update_event_settings(
-     '66666666-6666-6666-6666-666666666666', 2, true, 'open'::public.registration_state,
+     '66666666-6666-6666-6666-666666666666', 2, true, 'open'::public.registration_state, null::boolean,
      (select settings_version from public.events where id = '66666666-6666-6666-6666-666666666666'))),
   true, 'the waitlist is enabled again');
 select is(
@@ -146,7 +146,7 @@ select is((select waitlist_rank from public.registrations where phone_e164 = '+5
 -- ------------------------------------------ promoting several at once ----
 -- Headroom of two, five requested: exactly two move, oldest first, and I1 still holds.
 select public.update_event_settings(
-  '66666666-6666-6666-6666-666666666666', 4, true, 'open'::public.registration_state,
+  '66666666-6666-6666-6666-666666666666', 4, true, 'open'::public.registration_state, null::boolean,
   (select settings_version from public.events where id = '66666666-6666-6666-6666-666666666666'));
 
 select results_eq(

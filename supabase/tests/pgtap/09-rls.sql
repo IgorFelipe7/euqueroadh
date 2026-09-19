@@ -194,7 +194,7 @@ select is(pg_temp.probe('authenticated',
 select is(pg_temp.probe('authenticated',
             '{"sub":"a0000000-0000-0000-0000-00000000000e","role":"authenticated"}',
             $$select (public.update_event_settings('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-                9, true, 'open'::public.registration_state, 1::bigint)).capacity::text$$),
+                9, true, 'open'::public.registration_state, null::boolean, 1::bigint)).capacity::text$$),
           'ERROR:42501', 'and every administrative RPC refuses them immediately');
 
 -- ------------------------------------------------------------ service_role ----

@@ -132,7 +132,7 @@ select is(
 
 -- -------------------------------------------------------------- settings ----
 select public.update_event_settings('88888888-8888-8888-8888-888888888888',
-         5, false, 'open'::public.registration_state,
+         5, false, 'open'::public.registration_state, null::boolean,
          (select settings_version from public.events where id = '88888888-8888-8888-8888-888888888888'));
 
 select is((select count(*)::int from public.admin_actions where action = 'settings.updated'),
@@ -140,13 +140,15 @@ select is((select count(*)::int from public.admin_actions where action = 'settin
 select is(
   (select a.metadata from public.admin_actions a where a.action = 'settings.updated'),
   jsonb_build_object(
-    'from', jsonb_build_object('capacity', 2, 'waitlist_enabled', true, 'registration_state', 'open'),
-    'to',   jsonb_build_object('capacity', 5, 'waitlist_enabled', false, 'registration_state', 'open')),
+    'from', jsonb_build_object('capacity', 2, 'waitlist_enabled', true,
+                               'registration_state', 'open', 'certificates_enabled', false),
+    'to',   jsonb_build_object('capacity', 5, 'waitlist_enabled', false,
+                               'registration_state', 'open', 'certificates_enabled', false)),
   'recording the previous and new SETTING values - these are not personal data');
 
 select throws_ok(
   $$select * from public.update_event_settings('88888888-8888-8888-8888-888888888888',
-      99, true, 'open'::public.registration_state, 1::bigint)$$,
+      99, true, 'open'::public.registration_state, null::boolean, 1::bigint)$$,
   '40001', 'settings_conflict', 'a conflicting save raises');
 select is((select count(*)::int from public.admin_actions where action = 'settings.updated'),
           1, 'and leaves no audit row behind');

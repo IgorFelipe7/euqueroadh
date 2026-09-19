@@ -13,7 +13,12 @@ export default function robots(): MetadataRoute.Robots {
   const origin = publicEnv.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
 
   return {
-    rules: { userAgent: '*', allow: '/', disallow: ['/admin', '/auth'] },
+    /*
+     * `/certificado` carries one named person's document, reachable only by an unguessable token.
+     * Indexing it would take a link that was sent to one person and publish it — the page also sets
+     * `robots: { index: false }` in its own metadata, which is the part a crawler actually honours.
+     */
+    rules: { userAgent: '*', allow: '/', disallow: ['/admin', '/auth', '/certificado'] },
     sitemap: `${origin}/sitemap.xml`,
   };
 }

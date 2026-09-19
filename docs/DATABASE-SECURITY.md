@@ -30,7 +30,7 @@ unreachable by the privilege model:
 
 | # | Invariant | Enforced by |
 | --- | --- | --- |
-| **I6** | Every lock is acquired in the order `events` → `registrations`, never the reverse | No role can write `registrations` or `events` directly; all mutations go through event-first RPCs (§ 5.5, § 8.3) |
+| **I6** | Every lock is acquired in the order `events` → `raffles` → `registrations`, never another (the raffle step was added by RAFFLE-AND-CERTIFICATE-SPEC.md § 3.2) | No role can write `registrations` or `events` directly; all mutations go through event-first RPCs (§ 5.5, § 8.3) |
 | **I9** | Every database-local administrative mutation writes its audit record in the **same transaction** as the mutation | The audit `INSERT` is the last statement inside each mutation RPC; no role can mutate outside an RPC (§ 6.7) |
 
 ---
@@ -1669,6 +1669,10 @@ would read "denied". `PUBLIC` likewise holds nothing on any application table.
 | `admin_users` | `service_role` | ❌ | ❌ | ❌ | ❌ |
 | `admin_actions` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
 | `admin_actions` | `service_role` | ❌ | ❌ | ❌ | ❌ |
+| `raffles` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
+| `raffles` | `service_role` | ❌ | ❌ | ❌ | ❌ |
+| `raffle_draws` | `authenticated` | ✅ `is_active_admin()` | ❌ | ❌ | ❌ |
+| `raffle_draws` | `service_role` | ❌ | ❌ | ❌ | ❌ |
 
 **`authenticated` holds `SELECT` and nothing else, on every table.** Every write — including a
 simple name correction — happens through a `SECURITY DEFINER` RPC that begins with an
@@ -1684,8 +1688,8 @@ full:
 | --- | --- |
 | `PUBLIC` | nothing |
 | `anon` | nothing — no table privilege, no routine, no policy |
-| `authenticated` | `SELECT` on all four tables, scoped by the RLS policies above; `EXECUTE` on the administrative RPCs, each of which re-checks `is_active_admin()` |
-| `service_role` | `SELECT` on `public.events`; `EXECUTE` on `register_for_event`. **No `SELECT` on `registrations`, `admin_users` or `admin_actions`. No write privilege on any table.** |
+| `authenticated` | `SELECT` on all six tables, scoped by the RLS policies above; `EXECUTE` on the administrative RPCs, each of which re-checks `is_active_admin()` |
+| `service_role` | `SELECT` on `public.events`; `EXECUTE` on `register_for_event` and `get_certificate`. **No `SELECT` on `registrations`, `admin_users`, `admin_actions`, `raffles` or `raffle_draws`. No write privilege on any table.** |
 
 Three points about the `events` grant specifically:
 
@@ -1784,7 +1788,7 @@ world-executable by accident. `S/D` = `SECURITY DEFINER`, `S/I` = `SECURITY INVO
 | `edit_registration(uuid,text,smallint,text)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.3 |
 | `cancel_registration(uuid)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.2 |
 | `promote_from_waitlist(uuid,integer)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.1 |
-| `update_event_settings(uuid,integer,boolean,registration_state,bigint)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.4 |
+| `update_event_settings(uuid,integer,boolean,registration_state,boolean,bigint)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.4. The `boolean` before the token is `certificates_enabled`; `null` leaves it unchanged, which is what lets the dashboard's partial forms post here safely. |
 | `delete_registration(uuid)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.5 |
 | `purge_event_registrations(uuid,bigint)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.5 |
 | `record_export_action(uuid,integer,jsonb)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | § 6.7 |
@@ -1792,8 +1796,17 @@ world-executable by accident. `S/D` = `SECURITY DEFINER`, `S/I` = `SECURITY INVO
 | `add_admin_user(uuid,text,text)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Database half of the invite flow (§ 6.7). Called with the **inviting administrator's JWT**, not the secret key — see the note below. |
 | `remove_admin_user(uuid)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** + guards | Database half of removal, run before the Auth delete (§ 6.7). Admin JWT, same reason. |
 | `verify_event_counters()` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Maintenance assertion. Returns counts only, never participant data, but is still gated. Test suites and manual checks connect as `postgres`, which owns the routine and needs no grant. |
+| `set_registration_attendance(uuid,boolean)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Check-in. Refuses anything but a `confirmed` registration. |
+| `create_raffle(uuid,text,text,raffle_pool,integer,boolean)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | |
+| `update_raffle(uuid,text,text,raffle_pool,integer,boolean)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | `pool` and `exclude_previous_winners` freeze once a draw exists. |
+| `delete_raffle(uuid)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Audits the draw count *before* the cascade removes the rows. |
+| `reset_raffle(uuid)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Clears the draws, keeps `draw_seq`. |
+| `draw_raffle_winner(uuid)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | Locks `events` → `raffles`. Decides, records and audits in one transaction (D31), storing the seed that makes the draw replayable (D32). |
+| `resolve_raffle_draw(uuid,raffle_draw_outcome)` | S/D | `''` | ❌ | ❌ | ✅ | ❌ | **`is_active_admin()`** | `pending` is not a settable outcome. |
+| `new_certificate_token()` | **S/I** | `''` | ❌ | ❌ | ❌ | ❌ | none needed | **Granted to nobody.** Evaluated only by the table owner, as the column default, and by the definer routines that insert. |
+| `get_certificate(text)` | S/D | `''` | ❌ | ❌ | ❌ | ✅ | none — server-only by ACL | The public certificate read. `service_role` only, for the same reason as `register_for_event`: the page renders on our own server (§ 8.6). Returns the recipient's name and the event's display fields — never a phone number, an age or an id — and **zero rows for every negative case**, so it cannot distinguish "no such token" from "did not attend". |
 
-**Sixteen routines, and that is the whole list.** The public *read* of event display copy is not an
+**Twenty-six routines, and that is the whole list.** The public *read* of event display copy is not an
 RPC — it is a hand-written DTO query in `lib/data/public.ts` using the secret key (§ 8.6), so it
 adds no routine. If a future change introduces one, it must be added to this matrix in the same
 commit.
@@ -1801,17 +1814,19 @@ commit.
 Reading the matrix:
 
 - **No routine is executable by `PUBLIC` or by `anon`. Not one.**
-- **Three routines are granted to nobody** (`immutable_unaccent`, `sync_event_counts`,
-  `record_admin_action`). They are reached through generated-column evaluation, trigger firing, and
+- **Four routines are granted to nobody** (`immutable_unaccent`, `sync_event_counts`,
+  `record_admin_action`, `new_certificate_token`). They are reached through generated-column evaluation, trigger firing, and
   definer-to-definer calls respectively — none of which consult `EXECUTE` privilege for a Data API
   role. If a future change makes one of them need a grant, that is a signal to re-examine the
   design, not to add the grant.
 - **`authenticated` may execute only the admin operations**, and every one of those re-checks
   `is_active_admin()` internally. A signed-in non-administrator gets `not_authorized` from all of
   them.
-- **`service_role` may execute exactly one routine: `register_for_event`.** Together with `SELECT`
-  on `public.events` (§ 8.3), that is the entire secret-key surface on the database: one read, one
-  write, both on the public path.
+- **`service_role` may execute exactly two routines: `register_for_event` and `get_certificate`.**
+  Together with `SELECT` on `public.events` (§ 8.3), that is the entire secret-key surface on the
+  database: one table read and two narrow routines, all three on the public path. Both routines are
+  the same shape — a server-rendered page calling a routine that returns only what that page
+  displays, never a row.
 
   This is a correctness requirement, not merely least privilege. Every other routine authorizes with
   `is_active_admin()`, which resolves `auth.uid()` from the request's JWT claims. **Under

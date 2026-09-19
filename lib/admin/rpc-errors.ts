@@ -27,12 +27,10 @@ export function classifyRpcError(error: RpcErrorLike | null | undefined): AdminE
 
   const [name, argument] = message.split(':', 2);
 
-  if (name === 'capacity_below_confirmed') {
+  // The two routines that format a number into their own error name, so the sentence can quote it.
+  if (name === 'capacity_below_confirmed' || name === 'winners_below_drawn') {
     const detail = Number.parseInt(argument ?? '', 10);
-    return {
-      code: 'capacity_below_confirmed',
-      detail: Number.isFinite(detail) ? detail : undefined,
-    };
+    return { code: name, detail: Number.isFinite(detail) ? detail : undefined };
   }
 
   if (NAMED.has(name) && name !== 'unavailable') {

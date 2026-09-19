@@ -112,7 +112,7 @@ select set_config('request.jwt.claims',
 select set_config('request.jwt.claims',
   '{"sub":"a0000000-0000-0000-0000-00000000000c","role":"authenticated"}', true);
 select public.update_event_settings('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-         6, true, 'open'::public.registration_state, 1::bigint);
+         6, true, 'open'::public.registration_state, null::boolean, 1::bigint);
 select set_config('request.jwt.claims',
   '{"sub":"a0000000-0000-0000-0000-00000000000a","role":"authenticated"}', true);
 

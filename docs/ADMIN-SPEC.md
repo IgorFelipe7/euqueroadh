@@ -14,25 +14,37 @@ All interface copy is pt-BR.
 
 ## 1. Information architecture
 
-Four destinations. No sub-navigation, no settings-within-settings.
+Six destinations. No sub-navigation, no settings-within-settings.
 
 | Route | Label | Purpose |
 | --- | --- | --- |
 | `/admin` | `Painel` | Event state at a glance, plus the actions that state implies |
 | `/admin/inscricoes` | `Inscrições` | The full list: search, filter, sort, per-person actions, export |
-| `/admin/configuracoes` | `Configurações` | Capacity, waitlist, registrations open/closed |
+| `/admin/presenca` | `Presença` | Check-in at the door. Search-first, one 56 px button per row |
+| `/admin/sorteio` | `Sorteio` | Raffles: configure them sitting down, run them from `/palco` |
+| `/admin/configuracoes` | `Configurações` | Capacity, waitlist, registrations open/closed, certificates |
 | `/admin/equipe` | `Equipe` | Invite, deactivate and remove administrators |
-| `/admin/auditoria` | — | The stored audit trail, read-only. Reached from `Equipe`, deliberately **not** a fifth tab (§ 10) |
+| `/admin/sorteio/[id]/palco` | — | The projected stage. Reached from `Sorteio`; **the one dark admin surface** (D38) |
+| `/admin/auditoria` | — | The stored audit trail, read-only. Reached from `Equipe`, deliberately **not** a tab (§ 10) |
 | `/admin/entrar` | — | Sign-in (public route) |
 | `/admin/sem-acesso` | — | Signed in, but not an authorized administrator |
 
-**Chrome.** Desktop: a 220 px left sidebar with the event title, the four links, and the signed-in
+**Chrome.** Desktop: a 220 px left sidebar with the event title, all six links, and the signed-in
 administrator's name plus `Sair` at the bottom. Mobile: a top bar with the event title and a
-bottom tab bar with the four destinations — thumb-reachable, which matters because the phone is the
-device an organizer actually has at the door.
+bottom tab bar — thumb-reachable, which matters because the phone is the device an organizer
+actually has at the door.
+
+**The tab bar carries five of the six.** It holds what an organizer does *standing up at the venue*;
+`Equipe` is a sitting-down task and is the one left out. Six labels across a 375 px screen leaves
+62 px each, and `Inscrições` does not fit in 62 px without dropping below the type scale's floor.
+The sidebar carries everything.
 
 **No breadcrumbs, no global search, no command palette, no notification bell, no dark-mode toggle.**
-Four pages do not need wayfinding.
+Six pages do not need wayfinding.
+
+Attendance, raffles and certificates are specified in full in
+[RAFFLE-AND-CERTIFICATE-SPEC.md](./RAFFLE-AND-CERTIFICATE-SPEC.md); this document covers the four
+original surfaces.
 
 ---
 

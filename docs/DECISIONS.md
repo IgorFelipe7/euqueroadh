@@ -461,6 +461,118 @@ in review. `vercel.json` is primary; the dashboard is the fallback if the file i
 
 ---
 
+## Part 1b — Raffle, attendance and certificates
+
+Added by [RAFFLE-AND-CERTIFICATE-SPEC.md](./RAFFLE-AND-CERTIFICATE-SPEC.md).
+
+### D30 · Attendance is one nullable timestamp, with no counter
+
+**Decision.** `registrations.attended_at timestamptz`, a partial index, and nothing on `events`.
+
+**Reason.** The counters on `events` exist because I1 — never oversold — is a `CHECK` constraint,
+and a `CHECK` can only reference columns of its own row (D1). Attendance carries no invariant:
+there is no maximum number of people who may be present. A `count(*)` over the partial index costs
+nothing at three hundred rows, and a counter would mean editing `sync_event_counts()` — the most
+load-bearing trigger in the schema — for a number nothing depends on.
+
+**Trade-off.** Two `count(*)` queries on the door screen instead of one column read. Immaterial.
+
+### D31 · The winner is drawn in the database, and recorded before the browser is told
+
+**Decision.** `draw_raffle_winner()` selects, inserts the `raffle_draws` row and audits, all inside
+one transaction under the event → raffle lock. The stage animates towards a value it was handed.
+
+**Reason.** This is the entire security model of a live, projected draw. Reloading mid-animation
+shows the same winner; a crashed laptop does not re-roll; no code in the browser — and no operator —
+can influence, preview or re-run the outcome. A draw decided client-side cannot be made trustworthy
+afterwards by any amount of UI.
+
+**Alternative.** Deciding in the Server Action and writing afterwards — same result, but the write
+would no longer be in the same transaction as the authorization check and the audit record (I9).
+
+### D32 · Every draw stores its seed, pool size and offset
+
+**Decision.** `seed bytea`, `pool_size`, `pool_offset` on each `raffle_draws` row. The winner is
+`pool[first-60-bits(seed) mod pool_size]` over the pool ordered by `id`.
+
+**Reason.** `order by random() limit 1` is exactly as fair and entirely unverifiable — once it has
+run, nothing survives that proves what the pool was. Three columns turn a promise into evidence:
+any past draw can be re-derived months later, and a pgTAP test does exactly that.
+
+**Trade-off.** Modulo bias, bounded at one part in 2⁵⁰ for a pool in the hundreds; recorded in the
+migration so nobody "fixes" it with rejection sampling. **Not implemented:** commit–reveal, which
+would let the *audience* verify rather than only an administrator. The schema is compatible with it.
+
+### D33 · A raffle result cascades from the registration and snapshots no name
+
+**Decision.** `raffle_draws.registration_id references registrations(id) on delete cascade`, with no
+copy of the name.
+
+**Reason.** The opposite of `admin_actions.actor_label`, deliberately. An audit record must outlive
+what it describes, because its purpose is accountability. A raffle result is not an audit record —
+it is a *result*, and its subject's identity is participant personal data, which lives in exactly
+one table. An LGPD purge must reach it. The `raffle.drawn` audit row survives, carrying ids and
+counts only, which is the correct residue.
+
+### D34 · The stage is the control: no second device, no realtime, no polling
+
+**Decision.** `/admin/sorteio/[id]/palco` is both the projected surface and the operator's console,
+driven from the keyboard, with controls that fade out after three seconds.
+
+**Reason.** One moving part instead of three, on the most visible sixty seconds of the evening. A
+phone remote would need a realtime channel or a poll, and each is a way for the draw to fail in
+front of a room. The fade-out is the consequence: what the room sees must be the composition, never
+a toolbar.
+
+**Trade-off.** The operator must be at the machine driving the projector. Realtime is the upgrade
+path if that ever stops being true.
+
+### D35 · Projected names are masked to first name plus initial
+
+**Decision.** `Ana S.` on the stage, enforced by sending the browser nothing else: the Server
+Component passes masked labels, and the full name reaches only the operator's confirm control.
+
+**Reason.** The audience is `PARA JOVENS`, some of them minors, and the screen may be photographed,
+streamed or posted. A full name broadcast that way cannot be withdrawn. The masked form keeps every
+bit of the drama and gives up only the exposure. Masking in the data layer rather than in the view
+is what stops it drifting — there is no unmasked value in the bundle to drift towards.
+
+### D36 · Certificate access is a per-registration token; there is no lookup by telephone
+
+**Decision.** 160 bits on each registration, `/certificado/<token>`, read by one `SECURITY DEFINER`
+routine granted to `service_role` alone. Every negative case returns zero rows.
+
+**Reason.** A page that answers "what is the name registered to this number" is a personal-data
+disclosure endpoint with a form in front of it. A rate limit and a CAPTCHA reduce the volume of that
+disclosure; they do not change what it is.
+
+**Trade-off.** The organizer distributes the links. The admin's `wa.me` deep link and the export's
+`Certificado` column exist to make that one tap rather than one message composed by hand.
+
+### D37 · PNG via `next/og`; no PDF dependency
+
+**Decision.** An A4 landscape sheet and a 1080 × 1920 story, both PNG, rendered with the `next/og`
+already used for the social card. Two static Archivo faces ship in `assets/fonts/`.
+
+**Reason.** The audience is young people on phones: a PNG saves to the gallery in one tap, sends on
+WhatsApp and posts to a story. A vector PDF would mean a second layout engine and a new dependency
+for a format most of them will never open — and the page's `@media print` stylesheet already
+produces one through the browser. The fonts are a build asset, not a dependency, and they exist
+because Satori cannot select a weight along a variable axis while the 400 → 800 jump *is* the
+identity.
+
+**Trade-off.** 240 KB of font in the repository, and `outputFileTracingIncludes` in `next.config.ts`
+so the tracer ships them.
+
+### D38 · The stage is the one exception to "the admin is light"
+
+**Decision.** `/palco` wears the public dark tokens. Every other admin surface stays light (D12).
+
+**Reason.** It is not a tool an organizer reads; it is a surface an audience watches. The exception
+is stated here and in the spec so it is not read as licence to darken anything else.
+
+---
+
 ## Part 2 — Open questions
 
 ### Resolved

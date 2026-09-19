@@ -24,8 +24,9 @@ export const metadata: Metadata = {
  * and looping.
  *
  * The chrome is two navigations rendered from one list (`components/admin/nav.tsx`): a sidebar
- * above `md`, a bottom tab bar below it. Neither is a menu that has to be opened — four
- * destinations do not need wayfinding (ADMIN-SPEC.md section 1).
+ * above `md`, a bottom tab bar below it. Neither is a menu that has to be opened — six destinations
+ * do not need wayfinding (ADMIN-SPEC.md section 1). The tab bar shows five of them: it carries what
+ * an organizer does standing up at the venue, and managing the team is not that.
  *
  * **Exactly one `Sair`.** The bar carries it at every width rather than each navigation carrying its
  * own, because two sign-out buttons in one document is an ambiguity for a screen reader and for

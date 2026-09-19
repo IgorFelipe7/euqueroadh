@@ -306,3 +306,79 @@ function unexpected(outcome: string | null): RegistrationAllocation {
   );
   return { outcome: 'unavailable' };
 }
+
+/* ------------------------------------------------------------------------------------------------
+ * Certificates (RAFFLE-AND-CERTIFICATE-SPEC.md section 4.3)
+ * ---------------------------------------------------------------------------------------------- */
+
+/** Exactly what a certificate renders. A name and the event's public facts — nothing operational. */
+export interface Certificate {
+  readonly fullName: string;
+  readonly attendedAt: string;
+  readonly eventSlug: string;
+  readonly eventTitle: string;
+  readonly eventKicker: string | null;
+  readonly audienceLabel: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string | null;
+  readonly timezone: string;
+  readonly venueName: string | null;
+  readonly venueCity: string | null;
+  readonly venueState: string | null;
+}
+
+interface CertificateRow {
+  full_name: string;
+  attended_at: string;
+  event_slug: string;
+  event_title: string;
+  event_kicker: string | null;
+  audience_label: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  timezone: string;
+  venue_name: string | null;
+  venue_city: string | null;
+  venue_state: string | null;
+}
+
+/**
+ * One certificate, by its token.
+ *
+ * `null` for every negative case — unknown token, not confirmed, not present, switch still off. The
+ * routine returns zero rows for all four, so this function cannot be used to tell them apart, and
+ * the page renders one sentence for all of them (section 4.3).
+ *
+ * The token is a capability. It is **never logged**: the failure branch records that a read failed
+ * and its SQLSTATE, and nothing that would put a working link into a log aggregator.
+ */
+export async function getCertificate(token: string): Promise<Certificate | null> {
+  if (typeof token !== 'string' || token.length < 20 || token.length > 64) return null;
+
+  const { data, error } = await secretClient().rpc('get_certificate', { p_token: token });
+
+  if (error) {
+    console.error(
+      JSON.stringify({ event: 'public.certificate_rpc_failed', code: error.code ?? 'unknown' }),
+    );
+    return null;
+  }
+
+  const row = (Array.isArray(data) ? (data[0] as CertificateRow | undefined) : undefined) ?? null;
+  if (!row) return null;
+
+  return {
+    fullName: row.full_name,
+    attendedAt: row.attended_at,
+    eventSlug: row.event_slug,
+    eventTitle: row.event_title,
+    eventKicker: row.event_kicker,
+    audienceLabel: row.audience_label,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    timezone: row.timezone,
+    venueName: row.venue_name,
+    venueCity: row.venue_city,
+    venueState: row.venue_state,
+  };
+}

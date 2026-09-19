@@ -23,11 +23,20 @@ import {
   ConfirmButton,
   type AdminAction,
 } from '@/components/admin/confirm-action';
-import { BUTTON_PRIMARY, INPUT_CLASS, PHONE_LINK, SR_ONLY, StatusPill } from '@/components/admin/ui';
+import { CertificateActions } from '@/components/admin/certificate-actions';
+import {
+  BUTTON_PRIMARY,
+  BUTTON_SECONDARY,
+  INPUT_CLASS,
+  PHONE_LINK,
+  SR_ONLY,
+  StatusPill,
+} from '@/components/admin/ui';
 import { ADMIN_COPY } from '@/lib/admin/copy';
+import { firstName } from '@/lib/domain/display-name';
 import type { RegistrationRowStatus } from '@/lib/admin/filters';
 import { IDLE } from '@/lib/admin/state';
-import { formatDateTime } from '@/lib/domain/format';
+import { formatDateTime, formatTime } from '@/lib/domain/format';
 import { formatForDisplay } from '@/lib/domain/phone';
 
 export interface TableRow {
@@ -39,6 +48,9 @@ export interface TableRow {
   readonly createdAt: string;
   readonly notes: string | null;
   readonly waitlistPosition: number | null;
+  readonly attendedAt: string | null;
+  /** Already assembled from the token, which never reaches this component (section 4.1). */
+  readonly certificateUrl: string;
 }
 
 export interface RegistrationsTableProps {
@@ -50,10 +62,18 @@ export interface RegistrationsTableProps {
     readonly cancel: AdminAction;
     readonly remove: AdminAction;
     readonly promote: AdminAction;
+    readonly attendance: AdminAction;
   };
+  /** Whether the organizer has switched certificates on. Governs what the panel offers. */
+  certificatesEnabled: boolean;
 }
 
-export function RegistrationsTable({ rows, headroom, actions }: RegistrationsTableProps) {
+export function RegistrationsTable({
+  rows,
+  headroom,
+  actions,
+  certificatesEnabled,
+}: RegistrationsTableProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const lastTrigger = useRef<HTMLButtonElement | null>(null);
@@ -79,8 +99,8 @@ export function RegistrationsTable({ rows, headroom, actions }: RegistrationsTab
       <div className="overflow-hidden rounded-[var(--radius-admin-panel)] border border-admin-line bg-admin-surface">
         <table className="w-full border-collapse text-left">
           <caption className={SR_ONLY}>
-            Inscrições, com nome, idade, celular, status e data. Cada linha abre um painel com os
-            detalhes e as ações.
+            Inscrições, com nome, idade, celular, status, presença e data. Cada linha abre um
+            painel com os detalhes e as ações.
           </caption>
           <thead>
             <tr className="border-b border-admin-line">
@@ -88,7 +108,8 @@ export function RegistrationsTable({ rows, headroom, actions }: RegistrationsTab
               <Th className="hidden sm:table-cell">Idade</Th>
               <Th className="hidden sm:table-cell">Celular</Th>
               <Th>Status</Th>
-              <Th className="hidden sm:table-cell">Inscrita em</Th>
+              <Th className="hidden md:table-cell">Presença</Th>
+              <Th className="hidden lg:table-cell">Inscrita em</Th>
               <th scope="col" className={SR_ONLY}>
                 Ações
               </th>
@@ -124,7 +145,20 @@ export function RegistrationsTable({ rows, headroom, actions }: RegistrationsTab
                 <td className="px-3 py-2 align-middle">
                   <StatusPill status={row.status} position={row.waitlistPosition} />
                 </td>
-                <td className="hidden px-3 py-2 align-middle text-hint text-admin-muted sm:table-cell">
+                {/*
+                  Presence, as a word rather than as a tick alone: colour and glyph are not
+                  accessible carriers on their own, and this column is read in a hurry.
+                */}
+                <td className="text-hint hidden px-3 py-2 align-middle md:table-cell">
+                  {row.attendedAt ? (
+                    <span className="font-semibold text-status-confirmed">
+                      Presente · {formatTime(new Date(row.attendedAt))}
+                    </span>
+                  ) : (
+                    <span className="text-admin-muted">—</span>
+                  )}
+                </td>
+                <td className="text-hint hidden px-3 py-2 align-middle text-admin-muted lg:table-cell">
                   {formatDateTime(new Date(row.createdAt))}
                 </td>
                 {/*
@@ -164,6 +198,7 @@ export function RegistrationsTable({ rows, headroom, actions }: RegistrationsTab
             row={open}
             headroom={headroom}
             actions={actions}
+            certificatesEnabled={certificatesEnabled}
             onClose={close}
           />
         ) : null}
@@ -200,17 +235,20 @@ function RegistrationDetail({
   row,
   headroom,
   actions,
+  certificatesEnabled,
   onClose,
 }: {
   row: TableRow;
   headroom: number;
   actions: RegistrationsTableProps['actions'];
+  certificatesEnabled: boolean;
   onClose: () => void;
 }) {
   const [editState, editAction, isSaving] = useActionState(actions.edit, IDLE);
   const [cancelState, cancelAction, isCancelling] = useActionState(actions.cancel, IDLE);
   const [removeState, removeAction, isRemoving] = useActionState(actions.remove, IDLE);
   const [promoteState, promoteAction, isPromoting] = useActionState(actions.promote, IDLE);
+  const [attendanceState, attendanceAction, isMarking] = useActionState(actions.attendance, IDLE);
 
   const nameId = useId();
   const ageId = useId();
@@ -245,6 +283,12 @@ function RegistrationDetail({
         <dd>{row.age} anos</dd>
         <dt className="text-admin-muted">Inscrita em</dt>
         <dd>{formatDateTime(new Date(row.createdAt))}</dd>
+        <dt className="text-admin-muted">Presença</dt>
+        <dd>
+          {row.attendedAt
+            ? `Presente · ${formatDateTime(new Date(row.attendedAt))}`
+            : 'Não registrada'}
+        </dd>
         {row.waitlistPosition ? (
           <>
             <dt className="text-admin-muted">Posição na lista</dt>
@@ -252,6 +296,42 @@ function RegistrationDetail({
           </>
         ) : null}
       </dl>
+
+      {/*
+        Attendance, editable from here as well as from the door screen. Only for a confirmed
+        registration: the database refuses anything else, and a control that always fails is worse
+        than no control (RAFFLE-AND-CERTIFICATE-SPEC.md section 1.2).
+      */}
+      {row.status === 'confirmed' ? (
+        <form action={attendanceAction} className="flex flex-col gap-2">
+          <input type="hidden" name="registrationId" value={row.id} />
+          <input type="hidden" name="present" value={row.attendedAt ? 'false' : 'true'} />
+          <button
+            type="submit"
+            disabled={isMarking}
+            aria-busy={isMarking}
+            className={row.attendedAt ? BUTTON_SECONDARY : BUTTON_PRIMARY}
+          >
+            {row.attendedAt
+              ? `${ADMIN_COPY.attendance.present} · ${ADMIN_COPY.attendance.undo}`
+              : ADMIN_COPY.attendance.mark}
+          </button>
+          <ActionResult state={attendanceState} pending={isMarking} />
+        </form>
+      ) : null}
+
+      {/*
+        The certificate. Offered only when it would actually work — confirmed, present, and the
+        switch on — so an organizer cannot send a link that renders "não disponível".
+      */}
+      {row.status === 'confirmed' && row.attendedAt ? (
+        <CertificateActions
+          url={row.certificateUrl}
+          firstName={firstName(row.fullName)}
+          phoneE164={row.phoneE164}
+          enabled={certificatesEnabled}
+        />
+      ) : null}
 
       {row.status !== 'cancelled' ? (
         <form action={editAction} className="flex flex-col gap-3 border-t border-admin-line pt-4">

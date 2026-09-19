@@ -53,6 +53,8 @@ export interface SettingsSnapshot {
   readonly capacity: number;
   readonly waitlistEnabled: boolean;
   readonly registrationState: 'open' | 'closed';
+  /** The certificate gate. Off until the organizer turns it on, after the event. */
+  readonly certificatesEnabled: boolean;
 }
 
 /**
@@ -69,6 +71,8 @@ export async function updateEventSettings(input: {
   capacity: number;
   waitlistEnabled: boolean;
   registrationState: 'open' | 'closed';
+  /** `null` leaves the switch as it is — see `flagOrNull` in the admin actions. */
+  certificatesEnabled: boolean | null;
   expectedSettingsVersion: number;
 }): Promise<MutationResult<SettingsSnapshot>> {
   await assertAdmin();
@@ -79,6 +83,7 @@ export async function updateEventSettings(input: {
     p_capacity: input.capacity,
     p_waitlist_enabled: input.waitlistEnabled,
     p_state: input.registrationState,
+    p_certificates_enabled: input.certificatesEnabled,
     p_expected_settings_version: input.expectedSettingsVersion,
   });
 
@@ -89,6 +94,7 @@ export async function updateEventSettings(input: {
     capacity: number;
     waitlist_enabled: boolean;
     registration_state: 'open' | 'closed';
+    certificates_enabled: boolean;
   }>(data);
 
   if (!row) return fail({ message: 'empty' }, 'admin.settings_rpc_empty');
@@ -100,6 +106,7 @@ export async function updateEventSettings(input: {
       capacity: row.capacity,
       waitlistEnabled: row.waitlist_enabled,
       registrationState: row.registration_state,
+      certificatesEnabled: row.certificates_enabled,
     },
   };
 }
@@ -283,6 +290,177 @@ export async function recordExportAction(
 
   if (error) return fail(error, 'admin.export_audit_failed');
   return { ok: true, value: true };
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Attendance
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * Marks one person present, or clears the mark.
+ *
+ * Idempotent in the database: `attended_at` is assigned once and a repeat check-in does not rewrite
+ * it, so a double tap at the door leaves the arrival time alone. `not_confirmed` is a refusal, not
+ * a bug — a waitlisted person needs their seat confirmed first, which is a capacity-checked action.
+ */
+export async function setRegistrationAttendance(
+  id: string,
+  present: boolean,
+): Promise<MutationResult<{ attendedAt: string | null }>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { data, error } = await supabase.rpc('set_registration_attendance', {
+    p_registration_id: id,
+    p_present: present,
+  });
+
+  if (error) return fail(error, 'admin.attendance_rpc_failed');
+
+  const row = firstRow<{ attended_at: string | null }>(data);
+  return { ok: true, value: { attendedAt: row?.attended_at ?? null } };
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Raffles
+ * ---------------------------------------------------------------------------------------------- */
+
+export interface RaffleInput {
+  readonly name: string;
+  readonly prizeLabel: string | null;
+  readonly pool: 'attended' | 'confirmed';
+  readonly winnersTarget: number;
+  readonly excludePreviousWinners: boolean;
+}
+
+export async function createRaffle(
+  eventId: string,
+  input: RaffleInput,
+): Promise<MutationResult<string>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { data, error } = await supabase.rpc('create_raffle', {
+    p_event_id: eventId,
+    p_name: input.name,
+    p_prize_label: input.prizeLabel,
+    p_pool: input.pool,
+    p_winners_target: input.winnersTarget,
+    p_exclude_previous_winners: input.excludePreviousWinners,
+  });
+
+  if (error) return fail(error, 'admin.raffle_create_failed');
+
+  const row = firstRow<{ raffle_id: string } | string>(data);
+  const id = typeof row === 'string' ? row : (row?.raffle_id ?? null);
+  if (!id) return fail({ message: 'empty' }, 'admin.raffle_create_empty');
+
+  return { ok: true, value: id };
+}
+
+export async function updateRaffle(
+  raffleId: string,
+  input: RaffleInput,
+): Promise<MutationResult<true>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { error } = await supabase.rpc('update_raffle', {
+    p_raffle_id: raffleId,
+    p_name: input.name,
+    p_prize_label: input.prizeLabel,
+    p_pool: input.pool,
+    p_winners_target: input.winnersTarget,
+    p_exclude_previous_winners: input.excludePreviousWinners,
+  });
+
+  if (error) return fail(error, 'admin.raffle_update_failed');
+  return { ok: true, value: true };
+}
+
+export async function deleteRaffle(raffleId: string): Promise<MutationResult<true>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { error } = await supabase.rpc('delete_raffle', { p_raffle_id: raffleId });
+  if (error) return fail(error, 'admin.raffle_delete_failed');
+  return { ok: true, value: true };
+}
+
+export async function resetRaffle(raffleId: string): Promise<MutationResult<number>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { data, error } = await supabase.rpc('reset_raffle', { p_raffle_id: raffleId });
+  if (error) return fail(error, 'admin.raffle_reset_failed');
+
+  const row = firstRow<{ cleared: number }>(data);
+  return { ok: true, value: Number(row?.cleared ?? 0) };
+}
+
+export interface DrawnWinner {
+  readonly drawId: string;
+  readonly registrationId: string;
+  /** The FULL name — the operator has to announce the right person (section 3.6). */
+  readonly fullName: string;
+  readonly drawIndex: number;
+  readonly poolSize: number;
+}
+
+/**
+ * Draws one winner.
+ *
+ * **The database decides, and records, before this function returns.** Everything the stage does
+ * afterwards is theatre over a result that already exists: reloading mid-animation shows the same
+ * winner, and no code in the browser can influence or re-run the outcome
+ * (RAFFLE-AND-CERTIFICATE-SPEC.md section 2).
+ */
+export async function drawRaffleWinner(raffleId: string): Promise<MutationResult<DrawnWinner>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { data, error } = await supabase.rpc('draw_raffle_winner', { p_raffle_id: raffleId });
+  if (error) return fail(error, 'admin.raffle_draw_failed');
+
+  const row = firstRow<{
+    draw_id: string;
+    registration_id: string;
+    full_name: string;
+    draw_index: number;
+    pool_size: number;
+  }>(data);
+
+  if (!row) return fail({ message: 'empty' }, 'admin.raffle_draw_empty');
+
+  return {
+    ok: true,
+    value: {
+      drawId: row.draw_id,
+      registrationId: row.registration_id,
+      fullName: row.full_name,
+      drawIndex: row.draw_index,
+      poolSize: row.pool_size,
+    },
+  };
+}
+
+/** Confirms the winner, or records that they were not in the room. `pending` is not settable. */
+export async function resolveRaffleDraw(
+  drawId: string,
+  outcome: 'confirmed' | 'forfeited',
+): Promise<MutationResult<{ status: 'draft' | 'running' | 'finished' }>> {
+  await assertAdmin();
+  const supabase = await createUserClient();
+
+  const { data, error } = await supabase.rpc('resolve_raffle_draw', {
+    p_draw_id: drawId,
+    p_outcome: outcome,
+  });
+
+  if (error) return fail(error, 'admin.raffle_resolve_failed');
+
+  const row = firstRow<{ status: 'draft' | 'running' | 'finished' }>(data);
+  return { ok: true, value: { status: row?.status ?? 'running' } };
 }
 
 /** A `RETURNS TABLE` function arrives as an array of rows; these all return exactly one. */

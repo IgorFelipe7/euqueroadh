@@ -129,6 +129,7 @@ const ROUTINE_MATRIX: { name: string; args: Record<string, unknown> }[] = [
       p_capacity: 10,
       p_waitlist_enabled: true,
       p_state: 'open',
+      p_certificates_enabled: null,
       p_expected_settings_version: 1,
     },
   },
@@ -155,9 +156,57 @@ const ROUTINE_MATRIX: { name: string; args: Record<string, unknown> }[] = [
   },
   { name: 'remove_admin_user', args: { p_user_id: '00000000-0000-0000-0000-000000000000' } },
   { name: 'verify_event_counters', args: {} },
+
+  // Attendance, raffles and the certificate read (migrations 13-15). Every one of them is on this
+  // list for the same reason as everything above it: a routine that is not adversarially tested
+  // against anon, a signed-in non-administrator and a deactivated administrator is a routine whose
+  // ACL is a claim rather than a fact.
+  {
+    name: 'set_registration_attendance',
+    args: { p_registration_id: '00000000-0000-0000-0000-000000000000', p_present: true },
+  },
+  {
+    name: 'create_raffle',
+    args: {
+      p_event_id: '00000000-0000-0000-0000-000000000000',
+      p_name: 'Sorteio do intruso',
+      p_prize_label: null,
+      p_pool: 'attended',
+      p_winners_target: 1,
+      p_exclude_previous_winners: true,
+    },
+  },
+  {
+    name: 'update_raffle',
+    args: {
+      p_raffle_id: '00000000-0000-0000-0000-000000000000',
+      p_name: 'Sorteio do intruso',
+      p_prize_label: null,
+      p_pool: 'attended',
+      p_winners_target: 1,
+      p_exclude_previous_winners: true,
+    },
+  },
+  { name: 'delete_raffle', args: { p_raffle_id: '00000000-0000-0000-0000-000000000000' } },
+  { name: 'reset_raffle', args: { p_raffle_id: '00000000-0000-0000-0000-000000000000' } },
+  { name: 'draw_raffle_winner', args: { p_raffle_id: '00000000-0000-0000-0000-000000000000' } },
+  {
+    name: 'resolve_raffle_draw',
+    args: { p_draw_id: '00000000-0000-0000-0000-000000000000', p_outcome: 'confirmed' },
+  },
+  // Granted to service_role only, like register_for_event: the public certificate page renders on
+  // our own server. anon must not be able to call it directly with a guessed token.
+  { name: 'get_certificate', args: { p_token: 'nao-existe-esse-token-aqui' } },
 ];
 
-const TABLES = ['events', 'registrations', 'admin_users', 'admin_actions'];
+const TABLES = [
+  'events',
+  'registrations',
+  'admin_users',
+  'admin_actions',
+  'raffles',
+  'raffle_draws',
+];
 /** The three tables holding participant or administrator data. The secret key reaches none of
  *  them: its only table privilege is `select` on `events` (§ 8.3). */
 const PRIVATE_TABLES = TABLES.filter((table) => table !== 'events');
@@ -384,6 +433,25 @@ test('the Data API enforces the authorization matrix', async (t) => {
       assert.equal(event.capacity, 5, 'with the capacity the page needs');
       assert.equal(event.registration_state, 'open', 'and the registration state');
 
+      /*
+       * The certificate read, over the same real Data API. It is granted to the secret key for the
+       * same reason the write path is: the public page renders on our own server and the browser
+       * never contacts Supabase (D4).
+       *
+       * An unknown token must come back as an EMPTY RESULT rather than an error — a 404 or a
+       * distinct failure would let the route be used to tell "no such token" apart from "that
+       * person did not attend" (RAFFLE-AND-CERTIFICATE-SPEC.md section 4.3).
+       */
+      const certificate = await rpc(world.secret, 'get_certificate', {
+        p_token: 'nao-existe-esse-token-aqui',
+      });
+      assert.equal(certificate.ok, true, 'our own server may run the public certificate read');
+      assert.deepEqual(
+        certificate.body,
+        [],
+        'and an unknown token is an empty result, indistinguishable from every other refusal',
+      );
+
       for (const table of PRIVATE_TABLES) {
         const result = await rest(world.secret, `${table}?select=*`);
         assert.equal(
@@ -423,7 +491,14 @@ test('the Data API enforces the authorization matrix', async (t) => {
       const deletion = await rest(world.secret, `events?id=eq.${world.eventId}`, { method: 'DELETE' });
       assert.equal(deletion.ok, false, 'nor delete one');
 
-      for (const routine of ROUTINE_MATRIX.filter((r) => r.name !== 'register_for_event')) {
+      /*
+       * The two routines the secret key is SUPPOSED to reach — the public write path and the
+       * public certificate read. Everything else in the matrix must refuse it, which is what makes
+       * "the server secret is not an administrator" a tested fact rather than a claim.
+       */
+      const SECRET_KEY_ROUTINES = ['register_for_event', 'get_certificate'];
+
+      for (const routine of ROUTINE_MATRIX.filter((r) => !SECRET_KEY_ROUTINES.includes(r.name))) {
         const result = await rpc(world.secret, routine.name, routine.args);
         assert.equal(
           result.ok,

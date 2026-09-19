@@ -43,6 +43,7 @@ export default async function SettingsPage() {
             capacity: event.capacity,
             waitlistEnabled: event.waitlistEnabled,
             registrationState: event.registrationState,
+            certificatesEnabled: event.certificatesEnabled,
             settingsVersion: event.settingsVersion,
           }}
           confirmedCount={event.confirmedCount}

@@ -19,6 +19,22 @@ export interface PromotedPerson {
   readonly phoneE164: string;
 }
 
+/**
+ * A drawn winner, as the stage receives it.
+ *
+ * `maskedName` is what the composition renders — the projector shows `Ana S.` and nothing longer
+ * (RAFFLE-AND-CERTIFICATE-SPEC.md § 3.6). `fullName` travels too, because the operator has to
+ * announce the right person, and it is rendered **only** inside the confirm control, which lives in
+ * the chrome layer that fades out and is never part of what the room is looking at.
+ */
+export interface StageWinner {
+  readonly drawId: string;
+  readonly maskedName: string;
+  readonly fullName: string;
+  readonly drawIndex: number;
+  readonly poolSize: number;
+}
+
 export type AdminActionState =
   | { readonly status: 'idle' }
   | {
@@ -28,6 +44,12 @@ export type AdminActionState =
       readonly settingsVersion?: number;
       /** Present after a promotion: the people the organizer now has to telephone. */
       readonly promoted?: readonly PromotedPerson[];
+      /** Present after a draw: the winner the stage animates towards. */
+      readonly winner?: StageWinner;
+      /** Present after a draw or a resolution, so the stage knows when the raffle is complete. */
+      readonly raffleStatus?: 'draft' | 'running' | 'finished';
+      /** Present after a check-in: the moment recorded, or `null` when the mark was cleared. */
+      readonly attendedAt?: string | null;
     }
   | {
       readonly status: 'error';
@@ -41,7 +63,13 @@ export const IDLE: AdminActionState = { status: 'idle' };
 
 export function ok(
   message: string,
-  extra?: { settingsVersion?: number; promoted?: readonly PromotedPerson[] },
+  extra?: {
+    settingsVersion?: number;
+    promoted?: readonly PromotedPerson[];
+    winner?: StageWinner;
+    raffleStatus?: 'draft' | 'running' | 'finished';
+    attendedAt?: string | null;
+  },
 ): AdminActionState {
   return { status: 'ok', message, ...extra };
 }

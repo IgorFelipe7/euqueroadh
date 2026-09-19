@@ -35,6 +35,22 @@ export const ADMIN_ERROR_CODES = [
   /** Raised by `promote_registration` when the row moved, or when the last seat just went. */
   'not_waitlisted',
   'no_headroom',
+  /** Attendance: a person who is not confirmed cannot be marked present. */
+  'not_confirmed',
+  'invalid_attendance',
+  /** Raffles. */
+  'raffle_not_found',
+  'invalid_raffle_name',
+  'invalid_prize_label',
+  'invalid_winners_target',
+  'winners_below_drawn',
+  'raffle_already_drawn',
+  'raffle_complete',
+  'draw_pending',
+  'draw_not_found',
+  'draw_already_resolved',
+  'invalid_outcome',
+  'pool_empty',
   /** The database answered with something this application does not model. */
   'unavailable',
 ] as const;
@@ -88,6 +104,36 @@ export function adminErrorMessage(error: AdminError): string {
       return 'Esta inscrição não está mais na lista de espera. Recarregue a página.';
     case 'no_headroom':
       return 'Não há vagas livres. Aumente a capacidade ou cancele uma inscrição confirmada.';
+    case 'not_confirmed':
+      return 'Só é possível marcar presença de quem tem vaga confirmada. Confirme a vaga primeiro.';
+    case 'invalid_attendance':
+      return 'Não foi possível registrar a presença. Tente novamente.';
+    case 'raffle_not_found':
+      return 'Este sorteio não existe mais. Recarregue a página.';
+    case 'invalid_raffle_name':
+      return 'Dê um nome ao sorteio (entre 2 e 80 caracteres).';
+    case 'invalid_prize_label':
+      return 'Descreva o prêmio em até 80 caracteres, ou deixe em branco.';
+    case 'invalid_winners_target':
+      return 'Informe quantas pessoas serão sorteadas (de 1 a 50).';
+    case 'winners_below_drawn':
+      return `Este sorteio já tem ${error.detail ?? 0} ${
+        error.detail === 1 ? 'vencedor confirmado' : 'vencedores confirmados'
+      }. Não é possível reduzir abaixo disso.`;
+    case 'raffle_already_drawn':
+      return 'Este sorteio já começou. Quem participa e a exclusão de quem já ganhou não podem mais mudar — reinicie o sorteio para alterá-los.';
+    case 'raffle_complete':
+      return 'Este sorteio já tem todos os vencedores. Aumente o número de sorteados ou reinicie.';
+    case 'draw_pending':
+      return 'Há um resultado aguardando confirmação. Confirme ou sorteie novamente antes de continuar.';
+    case 'draw_not_found':
+      return 'Este resultado não existe mais. Recarregue a página.';
+    case 'draw_already_resolved':
+      return 'Este resultado já foi decidido por outra pessoa. Recarregue a página.';
+    case 'invalid_outcome':
+      return 'Não foi possível registrar o resultado. Tente novamente.';
+    case 'pool_empty':
+      return 'Ninguém está participando deste sorteio. Marque presenças ou troque quem participa.';
     case 'unavailable':
       return 'Não foi possível concluir a ação. Tente novamente.';
   }
@@ -108,6 +154,8 @@ export const ADMIN_COPY = {
   nav: {
     dashboard: 'Painel',
     registrations: 'Inscrições',
+    attendance: 'Presença',
+    raffles: 'Sorteio',
     settings: 'Configurações',
     team: 'Equipe',
     signOut: 'Sair',
@@ -215,6 +263,96 @@ export const ADMIN_COPY = {
     cta: 'Apagar todas as inscrições',
     done: (count: number) => `${count} ${count === 1 ? 'inscrição apagada' : 'inscrições apagadas'}.`,
   },
+  attendance: {
+    title: 'Presença',
+    description: 'Marque quem chegou. Use esta tela na porta, no celular.',
+    searchLabel: 'Buscar por nome ou celular',
+    searchPlaceholder: 'Nome ou celular',
+    mark: 'Marcar presença',
+    marking: 'Marcando…',
+    present: 'Presente',
+    undo: 'Desfazer',
+    arrivedAt: (time: string) => `Presente · ${time}`,
+    count: (present: number, confirmed: number) => `${present} de ${confirmed} presentes`,
+    empty: 'Digite um nome ou celular para encontrar a pessoa.',
+    emptySearch: (term: string) => `Ninguém encontrado para «${term}».`,
+    onlyConfirmed:
+      'Apenas quem tem vaga confirmada aparece aqui. Quem está na lista de espera precisa ter a ' +
+      'vaga confirmada antes.',
+    hint: 'A presença define quem participa do sorteio e quem recebe certificado.',
+  },
+  raffles: {
+    title: 'Sorteio',
+    description: 'Sorteios ao vivo entre as pessoas presentes.',
+    create: 'Novo sorteio',
+    nameLabel: 'Nome do sorteio',
+    namePlaceholder: 'Sorteio 1',
+    prizeLabel: 'Prêmio (opcional)',
+    prizePlaceholder: 'Kit de educação financeira',
+    poolLabel: 'Quem participa',
+    poolAttended: 'Somente quem está presente',
+    poolConfirmed: 'Todos os confirmados',
+    poolHint:
+      'Sortear entre os presentes evita sortear alguém que não está na sala. Marque as presenças ' +
+      'na tela Presença.',
+    winnersLabel: 'Quantas pessoas serão sorteadas',
+    excludeLabel: 'Não sortear quem já ganhou outro sorteio deste evento',
+    save: 'Salvar sorteio',
+    saving: 'Salvando…',
+    created: 'Sorteio criado.',
+    updated: 'Sorteio atualizado.',
+    deleted: 'Sorteio excluído.',
+    reset: (cleared: number) =>
+      `Sorteio reiniciado. ${cleared} ${cleared === 1 ? 'resultado apagado' : 'resultados apagados'}.`,
+    openStage: 'Abrir palco',
+    configure: 'Configurar',
+    resetCta: 'Reiniciar',
+    deleteCta: 'Excluir',
+    progress: (done: number, target: number) => `${done} de ${target} sorteados`,
+    statusDraft: 'Não iniciado',
+    statusRunning: 'Em andamento',
+    statusFinished: 'Concluído',
+    empty: 'Nenhum sorteio criado ainda.',
+    emptyHint: 'Crie um sorteio antes do evento e abra o palco na hora.',
+    eligible: (count: number) =>
+      `${count} ${count === 1 ? 'pessoa participando' : 'pessoas participando'}`,
+    confirmations: {
+      reset:
+        'Reiniciar este sorteio? Todos os resultados já sorteados serão apagados e o sorteio ' +
+        'volta ao início.',
+      remove: 'Excluir este sorteio? Os resultados já sorteados serão apagados junto.',
+    },
+    stage: {
+      hint: 'barra de espaço para sortear',
+      draw: 'Sortear',
+      drawing: 'Sorteando',
+      confirm: 'Confirmar',
+      forfeit: 'Não está aqui',
+      exit: 'Sair do palco',
+      fullscreen: 'Tela cheia',
+      drawn: 'Já sorteados',
+      complete: 'Sorteio concluído',
+      shortcuts: 'Espaço sorteia · Enter confirma · X sorteia de novo · F tela cheia · Esc sai',
+      /** Announced to screen readers, and the reason the stage is not a keyboard-only interface. */
+      announceWinner: (name: string) => `Resultado: ${name}`,
+    },
+  },
+  certificates: {
+    title: 'Certificados',
+    switchLabel: 'Certificados liberados',
+    switchHint:
+      'Quando ligado, quem esteve presente pode baixar o certificado pelo link pessoal. ' +
+      'Ligue depois que o evento terminar.',
+    rowAction: 'Certificado',
+    copy: 'Copiar link',
+    copied: 'Link copiado.',
+    whatsapp: 'Enviar no WhatsApp',
+    unavailable: 'Disponível apenas para quem esteve presente.',
+    disabled: 'Ligue «Certificados liberados» nas Configurações para que o link funcione.',
+    message: (name: string, url: string) =>
+      `Oi, ${name}! Seu certificado de participação na palestra Educação Financeira para Jovens ` +
+      `está aqui: ${url}`,
+  },
   audit: {
     title: 'Auditoria',
     empty: 'Nenhuma ação registrada ainda.',
@@ -231,12 +369,19 @@ export const AUDIT_ACTION_LABELS: Readonly<Record<string, string>> = {
   'registration.promoted': 'Promoção da lista de espera',
   'registration.edited': 'Inscrição corrigida',
   'registration.deleted': 'Inscrição excluída',
+  'registration.attendance_set': 'Presença registrada',
   'registrations.exported': 'Exportação de inscrições',
   'registrations.purged': 'Inscrições apagadas',
   'admin.invited': 'Organizador convidado',
   'admin.deactivated': 'Acesso desativado',
   'admin.reactivated': 'Acesso reativado',
   'admin.removed': 'Organizador removido',
+  'raffle.created': 'Sorteio criado',
+  'raffle.updated': 'Sorteio alterado',
+  'raffle.deleted': 'Sorteio excluído',
+  'raffle.drawn': 'Sorteio realizado',
+  'raffle.draw_resolved': 'Resultado do sorteio confirmado',
+  'raffle.reset': 'Sorteio reiniciado',
 };
 
 export function auditActionLabel(action: string): string {

@@ -6,7 +6,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(107);
+select plan(159);
 
 create temp table acl_matrix (
   signature      text primary key,
@@ -26,14 +26,33 @@ insert into acl_matrix values
   ('cancel_registration(uuid)',                                                 true,  true,  false, true),
   ('promote_from_waitlist(uuid,integer)',                                       true,  true,  false, true),
   ('promote_registration(uuid)',                                                true,  true,  false, true),
-  ('update_event_settings(uuid,integer,boolean,registration_state,bigint)',     true,  true,  false, true),
+  ('update_event_settings(uuid,integer,boolean,registration_state,boolean,bigint)',
+                                                                                true,  true,  false, true),
   ('delete_registration(uuid)',                                                 true,  true,  false, true),
   ('purge_event_registrations(uuid,bigint)',                                    true,  true,  false, true),
   ('record_export_action(uuid,integer,jsonb)',                                  true,  true,  false, true),
   ('set_admin_active(uuid,boolean)',                                            true,  true,  false, true),
   ('add_admin_user(uuid,text,text)',                                            true,  true,  false, true),
   ('remove_admin_user(uuid)',                                                   true,  true,  false, true),
-  ('verify_event_counters()',                                                   true,  true,  false, true);
+  ('verify_event_counters()',                                                   true,  true,  false, true),
+
+  -- Attendance and raffles (migrations 13 and 14).  Administrative, so: SECURITY DEFINER,
+  -- `authenticated` only, never service_role, and each one calls is_active_admin() first.
+  ('set_registration_attendance(uuid,boolean)',                                 true,  true,  false, true),
+  ('create_raffle(uuid,text,text,raffle_pool,integer,boolean)',                 true,  true,  false, true),
+  ('update_raffle(uuid,text,text,raffle_pool,integer,boolean)',                 true,  true,  false, true),
+  ('delete_raffle(uuid)',                                                       true,  true,  false, true),
+  ('reset_raffle(uuid)',                                                        true,  true,  false, true),
+  ('draw_raffle_winner(uuid)',                                                  true,  true,  false, true),
+  ('resolve_raffle_draw(uuid,raffle_draw_outcome)',                             true,  true,  false, true),
+
+  -- Certificates (migration 15).
+  -- `new_certificate_token` is granted to NOBODY and is not SECURITY DEFINER: it is evaluated only
+  -- by the table owner, as a column default, and by the definer routines that insert.
+  ('new_certificate_token()',                                                   false, false, false, false),
+  -- `get_certificate` mirrors register_for_event exactly: service_role ONLY, because the public
+  -- certificate page renders on our own server and the browser never contacts Supabase (D4).
+  ('get_certificate(text)',                                                     true,  false, true,  false);
 
 create temp view routines as
   select p.oid,
@@ -52,7 +71,7 @@ create temp view routines as
    where n.nspname = 'public';
 
 -- --------------------------------------------------------------- inventory ----
-select is((select count(*)::int from acl_matrix), 17, 'the matrix lists seventeen routines');
+select is((select count(*)::int from acl_matrix), 26, 'the matrix lists twenty-six routines');
 select set_eq(
   'select signature from routines',
   'select signature from acl_matrix',

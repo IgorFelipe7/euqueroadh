@@ -17,6 +17,8 @@ function row(overrides: Partial<ExportableRegistration> = {}): ExportableRegistr
     status: 'confirmed',
     createdAt: '2026-09-09T23:14:00.000Z',
     waitlistPosition: null,
+    attendedAt: null,
+    certificateUrl: 'https://exemplo.test/certificado/abc',
     ...overrides,
   };
 }
@@ -26,10 +28,30 @@ describe('buildExportCsv', () => {
     expect(buildExportCsv([row()]).startsWith(UTF8_BOM)).toBe(true);
   });
 
-  it('uses the semicolon delimiter and the six specified columns', () => {
+  it('uses the semicolon delimiter and the eight specified columns', () => {
     const [header] = buildExportCsv([]).replace(UTF8_BOM, '').split('\r\n');
 
-    expect(header).toBe('Nome;Idade;Celular;Status;Inscrita em;Posição na lista');
+    expect(header).toBe(
+      'Nome;Idade;Celular;Status;Inscrita em;Posição na lista;Presença;Certificado',
+    );
+  });
+
+  /**
+   * The certificate URL is a capability: a row that would render "não disponível" must not carry
+   * one, so an organizer cannot send a link that does not work (RAFFLE-AND-CERTIFICATE-SPEC.md
+   * section 4.2).
+   */
+  it('writes the certificate link only for someone confirmed and present', () => {
+    expect(
+      buildExportCsv([row({ status: 'confirmed', attendedAt: '2026-09-19T22:04:00.000Z' })]),
+    ).toContain('https://exemplo.test/certificado/abc');
+
+    expect(buildExportCsv([row({ status: 'confirmed', attendedAt: null })])).not.toContain(
+      'https://exemplo.test/certificado/abc',
+    );
+    expect(
+      buildExportCsv([row({ status: 'cancelled', attendedAt: '2026-09-19T22:04:00.000Z' })]),
+    ).not.toContain('https://exemplo.test/certificado/abc');
   });
 
   it('writes the human phone format, which is what an organizer will dial', () => {

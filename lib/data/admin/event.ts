@@ -42,6 +42,8 @@ export interface AdminEvent {
   readonly settingsVersion: number;
   readonly minAge: number | null;
   readonly maxAge: number | null;
+  /** The certificate gate. Off until the organizer turns it on, after the event. */
+  readonly certificatesEnabled: boolean;
 }
 
 interface AdminEventRow {
@@ -67,6 +69,7 @@ interface AdminEventRow {
   settings_version: number | string;
   min_age: number | null;
   max_age: number | null;
+  certificates_enabled: boolean;
 }
 
 const COLUMNS = [
@@ -92,6 +95,7 @@ const COLUMNS = [
   'settings_version',
   'min_age',
   'max_age',
+  'certificates_enabled',
 ].join(', ');
 
 /**
@@ -147,6 +151,7 @@ export const getAdminEvent = cache(async (): Promise<AdminEvent | null> => {
     settingsVersion: Number(data.settings_version),
     minAge: data.min_age,
     maxAge: data.max_age,
+    certificatesEnabled: data.certificates_enabled,
   };
 });
 

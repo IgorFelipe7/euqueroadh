@@ -11,7 +11,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(105);
+select plan(155);
 
 create temp table expected_table_acl (
   tbl       text    not null,
@@ -22,7 +22,7 @@ create temp table expected_table_acl (
 );
 
 -- The whole matrix, generated from its one rule so the rule itself is readable:
---   * `authenticated` holds SELECT on all four tables (RLS then decides which rows);
+--   * `authenticated` holds SELECT on all six tables (RLS then decides which rows);
 --   * `service_role` holds SELECT on `events` alone - event and configuration copy, never a
 --     participant record;
 --   * `anon` holds nothing anywhere;
@@ -32,7 +32,11 @@ select t.tbl, g.grantee, p.privilege,
        p.privilege = 'SELECT'
          and (g.grantee = 'authenticated'
               or (g.grantee = 'service_role' and t.tbl = 'events'))
-  from (values ('events'), ('registrations'), ('admin_users'), ('admin_actions')) as t(tbl)
+  from (values ('events'), ('registrations'), ('admin_users'), ('admin_actions'),
+               -- Migration 14. They follow the registrations rule exactly: `authenticated` reads
+               -- under RLS, and neither anon nor service_role reaches them at all — the secret key
+               -- must not learn who won any more than it can learn who registered.
+               ('raffles'), ('raffle_draws')) as t(tbl)
  cross join (values ('anon'), ('authenticated'), ('service_role')) as g(grantee)
  cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'),
                     ('TRUNCATE'), ('REFERENCES'), ('TRIGGER'), ('MAINTAIN')) as p(privilege);
@@ -100,8 +104,11 @@ select set_eq(
       cross join lateral aclexplode(p.proacl) x
      where n.nspname = 'public' and x.grantee = 'service_role'::regrole
        and x.privilege_type = 'EXECUTE'$$,
-  $$values ('register_for_event')$$,
-  'service_role may still execute exactly one routine, register_for_event');
+  -- TWO routines now, and both are the same shape: a narrow, server-rendered public path that the
+  -- browser never calls directly. `get_certificate` reads one name by an unguessable token and
+  -- returns zero rows for every negative case (RAFFLE-AND-CERTIFICATE-SPEC.md section 4.3).
+  $$values ('register_for_event'), ('get_certificate')$$,
+  'service_role may execute exactly the two public-path routines, and nothing else');
 
 select * from finish();
 rollback;

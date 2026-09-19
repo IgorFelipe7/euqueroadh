@@ -248,7 +248,7 @@ test('mixed concurrent operations never deadlock (I6)', async () => {
           tryCall(
             client,
             `select capacity from public.update_event_settings(
-               $1, $2, $3, 'open'::public.registration_state,
+               $1, $2, $3, 'open'::public.registration_state, null::boolean,
                (select settings_version from public.events where id = $1))`,
             [eventId, i % 2 === 0 ? 25 : 30, round % 2 === 0],
           ),

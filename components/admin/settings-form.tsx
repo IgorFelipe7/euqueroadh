@@ -34,6 +34,7 @@ export interface SettingsFormProps {
     readonly capacity: number;
     readonly waitlistEnabled: boolean;
     readonly registrationState: 'open' | 'closed';
+    readonly certificatesEnabled: boolean;
     readonly settingsVersion: number;
   };
   /** The floor the database will enforce. Shown, and checked here, before the save is attempted. */
@@ -53,6 +54,7 @@ export function SettingsForm({
   const [capacity, setCapacity] = useState(String(initial.capacity));
   const [waitlistEnabled, setWaitlistEnabled] = useState(initial.waitlistEnabled);
   const [registrationState, setRegistrationState] = useState(initial.registrationState);
+  const [certificatesEnabled, setCertificatesEnabled] = useState(initial.certificatesEnabled);
 
   /*
    * The token the next save will carry. It starts as the one the server rendered and advances to
@@ -78,6 +80,7 @@ export function SettingsForm({
         capacity: Number(capacity),
         waitlistEnabled,
         registrationState,
+        certificatesEnabled,
         settingsVersion: state.settingsVersion,
       });
     }
@@ -92,7 +95,8 @@ export function SettingsForm({
   const dirty =
     numericCapacity !== baseline.capacity ||
     waitlistEnabled !== baseline.waitlistEnabled ||
-    registrationState !== baseline.registrationState;
+    registrationState !== baseline.registrationState ||
+    certificatesEnabled !== baseline.certificatesEnabled;
 
   const blocked =
     !capacityIsNumber || belowConfirmed || (capacityIsZero && registrationState === 'open');
@@ -102,6 +106,7 @@ export function SettingsForm({
       <input type="hidden" name="settingsVersion" value={version} />
       <input type="hidden" name="waitlistEnabled" value={String(waitlistEnabled)} />
       <input type="hidden" name="registrationState" value={registrationState} />
+      <input type="hidden" name="certificatesEnabled" value={String(certificatesEnabled)} />
 
       {/* Capacity ------------------------------------------------------------------------ */}
       <div className="flex flex-col gap-2">
@@ -188,6 +193,21 @@ export function SettingsForm({
             ? ADMIN_COPY.settings.waitlistHint
             : ADMIN_COPY.confirmations.waitlistOff(waitlistCount)}
         </p>
+      </div>
+
+      {/* Certificates -------------------------------------------------------------------- */}
+      <div className="flex flex-col gap-2">
+        <label className="flex min-h-11 w-fit items-center gap-3 text-label text-admin-ink">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={certificatesEnabled}
+            onChange={(field) => setCertificatesEnabled(field.target.checked)}
+            className="size-5 accent-[var(--color-admin-blue)]"
+          />
+          {ADMIN_COPY.certificates.switchLabel}
+        </label>
+        <p className="text-hint text-admin-muted">{ADMIN_COPY.certificates.switchHint}</p>
       </div>
 
       <div className="flex flex-col items-start gap-3 border-t border-admin-line pt-5">

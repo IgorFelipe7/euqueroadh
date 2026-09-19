@@ -4,22 +4,29 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public, pg_catalog;
 
-select plan(73);
+select plan(86);
 
 -- ---------------------------------------------------------------- tables ----
 select has_table('public', 'events',        'events exists');
 select has_table('public', 'registrations', 'registrations exists');
 select has_table('public', 'admin_users',   'admin_users exists');
 select has_table('public', 'admin_actions', 'admin_actions exists');
+select has_table('public', 'raffles',       'raffles exists');
+select has_table('public', 'raffle_draws',  'raffle_draws exists');
 
--- "Four tables. No more." (section 2)
+-- D17 said "four tables. No more."  It is now SIX, and this number is the place that decision is
+-- recorded: raffles and raffle_draws were added by RAFFLE-AND-CERTIFICATE-SPEC.md, which argued
+-- for them explicitly.  Attendance and certificates, by contrast, added NO table - they are two
+-- columns on registrations and one on events, because neither is an entity.
+-- The assertion still does its job: a seventh table cannot appear without someone editing this
+-- line and saying why.
 select is(
   (select count(*)::int
      from pg_class c
      join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relkind = 'r'),
-  4,
-  'public holds exactly four tables - no speculative entities');
+  6,
+  'public holds exactly six tables - no speculative entities');
 
 -- ----------------------------------------------------------------- types ----
 select has_type('public', 'registration_status', 'registration_status enum exists');
@@ -28,6 +35,27 @@ select enum_has_labels('public', 'registration_status',
   array['confirmed', 'waitlisted', 'cancelled'], 'registration_status labels');
 select enum_has_labels('public', 'registration_state',
   array['open', 'closed'], 'registration_state labels');
+select has_type('public', 'raffle_pool',         'raffle_pool enum exists');
+select has_type('public', 'raffle_status',       'raffle_status enum exists');
+select has_type('public', 'raffle_draw_outcome', 'raffle_draw_outcome enum exists');
+select enum_has_labels('public', 'raffle_pool',
+  array['attended', 'confirmed'], 'raffle_pool labels');
+select enum_has_labels('public', 'raffle_status',
+  array['draft', 'running', 'finished'], 'raffle_status labels');
+select enum_has_labels('public', 'raffle_draw_outcome',
+  array['pending', 'confirmed', 'forfeited'], 'raffle_draw_outcome labels');
+
+-- Attendance and certificates are COLUMNS, not entities (migrations 13 and 15).
+select has_column('public', 'registrations', 'attended_at',
+  'attendance is a nullable timestamp on registrations');
+select has_column('public', 'registrations', 'certificate_token',
+  'the certificate capability lives on the registration it grants access to');
+select col_not_null('public', 'registrations', 'certificate_token',
+  'every registration has a certificate token from the moment it is written');
+select has_column('public', 'events', 'certificates_enabled',
+  'the certificate gate is a setting on the event');
+select has_index('public', 'registrations', 'registrations_certificate_token_uidx',
+  'the certificate token is unique, and indexed for the lookup');
 
 -- ---------------------------------------------------------------- events ----
 select has_column('public', 'events', 'id',                 'events.id');

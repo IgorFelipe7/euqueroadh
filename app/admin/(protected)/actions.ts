@@ -29,16 +29,25 @@ import { failed, ok, type AdminActionState } from '@/lib/admin/state';
 import { getAdminEvent } from '@/lib/data/admin/event';
 import {
   cancelRegistration,
+  createRaffle,
+  deleteRaffle,
   deleteRegistration,
+  drawRaffleWinner,
   editRegistration,
   promoteFromWaitlist,
   promoteRegistration,
   purgeEventRegistrations,
+  resetRaffle,
+  resolveRaffleDraw,
+  setRegistrationAttendance,
   updateEventSettings,
+  updateRaffle,
+  type RaffleInput,
 } from '@/lib/data/admin/mutations';
 import { inviteAdmin, removeAdmin, setAdminActive } from '@/lib/data/admin/team';
 import { assertAdmin } from '@/lib/data/auth';
 import { UnauthorizedError } from '@/lib/data/errors';
+import { maskedName } from '@/lib/domain/display-name';
 import { adminAgeSchema, fieldErrors, inviteInputSchema, nameSchema } from '@/lib/domain/schemas';
 import { ROUTES } from '@/lib/routes';
 
@@ -53,6 +62,19 @@ function text(formData: FormData, field: string): string {
 
 function flag(formData: FormData, field: string): boolean {
   return text(formData, field) === 'true' || text(formData, field) === 'on';
+}
+
+/**
+ * `null` when the form does not carry the field at all, which the settings RPC reads as "leave this
+ * one alone".
+ *
+ * This exists because two different forms post to `updateSettingsAction`: the full settings page,
+ * which sends every switch, and the dashboard's inline controls, which send only the one being
+ * changed. Treating an absent checkbox as `false` — the ordinary HTML reading — would mean closing
+ * registrations from the dashboard also silently switched certificates off.
+ */
+function flagOrNull(formData: FormData, field: string): boolean | null {
+  return formData.get(field) === null ? null : flag(formData, field);
 }
 
 function integer(formData: FormData, field: string): number {
@@ -138,6 +160,7 @@ export async function updateSettingsAction(
       capacity,
       waitlistEnabled: flag(formData, 'waitlistEnabled'),
       registrationState,
+      certificatesEnabled: flagOrNull(formData, 'certificatesEnabled'),
       expectedSettingsVersion: expected,
     });
 
@@ -429,5 +452,191 @@ export async function removeAdminAction(
 
     revalidatePath(ROUTES.adminTeam);
     return ok(ADMIN_COPY.team.removed);
+  });
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Attendance (RAFFLE-AND-CERTIFICATE-SPEC.md section 1)
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * The door screen's one action, and the toggle on the registrations row.
+ *
+ * Attendance moves who is eligible for a raffle and who may download a certificate, so the raffle
+ * pages are revalidated alongside the lists. The public page is not: attendance changes nothing a
+ * visitor can see.
+ */
+export async function setAttendanceAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const id = text(formData, 'registrationId');
+    if (!id) {
+      return failed('registration_not_found', adminErrorMessage({ code: 'registration_not_found' }));
+    }
+
+    const present = flag(formData, 'present');
+
+    const result = await setRegistrationAttendance(id, present);
+    if (!result.ok) return toState(result.error);
+
+    revalidatePath(ROUTES.adminAttendance);
+    revalidatePath(ROUTES.adminRegistrations);
+    revalidatePath(ROUTES.adminRaffles);
+
+    return ok(present ? ADMIN_COPY.attendance.present : 'Presença desfeita.', {
+      attendedAt: result.value.attendedAt,
+    });
+  });
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Raffles (RAFFLE-AND-CERTIFICATE-SPEC.md section 3)
+ * ---------------------------------------------------------------------------------------------- */
+
+/** Parses the four configuration fields shared by create and update. */
+function raffleInputFrom(formData: FormData): RaffleInput {
+  return {
+    name: text(formData, 'name').trim(),
+    prizeLabel: text(formData, 'prizeLabel').trim() || null,
+    pool: text(formData, 'pool') === 'confirmed' ? 'confirmed' : 'attended',
+    winnersTarget: integer(formData, 'winnersTarget'),
+    excludePreviousWinners: flag(formData, 'excludePreviousWinners'),
+  };
+}
+
+export async function saveRaffleAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const event = await getAdminEvent();
+    if (!event) return failed('event_not_found', adminErrorMessage({ code: 'event_not_found' }));
+
+    const input = raffleInputFrom(formData);
+
+    // Checked here as well as in the RPC so the field error lands on the field, rather than as a
+    // banner quoting a constraint. The database remains the authority for both.
+    if (input.name.length < 2 || input.name.length > 80) {
+      return failed('invalid_raffle_name', adminErrorMessage({ code: 'invalid_raffle_name' }), {
+        name: adminErrorMessage({ code: 'invalid_raffle_name' }),
+      });
+    }
+    if (!Number.isFinite(input.winnersTarget) || input.winnersTarget < 1) {
+      return failed(
+        'invalid_winners_target',
+        adminErrorMessage({ code: 'invalid_winners_target' }),
+        { winnersTarget: adminErrorMessage({ code: 'invalid_winners_target' }) },
+      );
+    }
+
+    const existing = text(formData, 'raffleId');
+
+    const result = existing
+      ? await updateRaffle(existing, input)
+      : await createRaffle(event.id, input);
+
+    if (!result.ok) return toState(result.error);
+
+    revalidatePath(ROUTES.adminRaffles);
+    return ok(existing ? ADMIN_COPY.raffles.updated : ADMIN_COPY.raffles.created);
+  });
+}
+
+export async function deleteRaffleAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const id = text(formData, 'raffleId');
+    if (!id) return failed('raffle_not_found', adminErrorMessage({ code: 'raffle_not_found' }));
+
+    if (!flag(formData, 'acknowledged')) {
+      return failed('unavailable', 'Confirme que entende que esta ação é permanente.');
+    }
+
+    const result = await deleteRaffle(id);
+    if (!result.ok) return toState(result.error);
+
+    revalidatePath(ROUTES.adminRaffles);
+    return ok(ADMIN_COPY.raffles.deleted);
+  });
+}
+
+export async function resetRaffleAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const id = text(formData, 'raffleId');
+    if (!id) return failed('raffle_not_found', adminErrorMessage({ code: 'raffle_not_found' }));
+
+    if (!flag(formData, 'acknowledged')) {
+      return failed('unavailable', 'Confirme que entende que esta ação é permanente.');
+    }
+
+    const result = await resetRaffle(id);
+    if (!result.ok) return toState(result.error);
+
+    revalidatePath(ROUTES.adminRaffles);
+    return ok(ADMIN_COPY.raffles.reset(result.value));
+  });
+}
+
+/**
+ * The draw.
+ *
+ * **The winner is already decided and recorded when this returns.** The stage animates towards a
+ * value it was given; it does not choose one, and it cannot re-run one. A reload mid-animation
+ * re-reads the same pending draw from the database (RAFFLE-AND-CERTIFICATE-SPEC.md section 2).
+ *
+ * The masked label is computed here, on the server, so the projector-facing half of the payload is
+ * never derived in the browser from a full name that should not have been there.
+ */
+export async function drawWinnerAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const id = text(formData, 'raffleId');
+    if (!id) return failed('raffle_not_found', adminErrorMessage({ code: 'raffle_not_found' }));
+
+    const result = await drawRaffleWinner(id);
+    if (!result.ok) return toState(result.error);
+
+    revalidatePath(ROUTES.adminRaffles);
+
+    const winner = result.value;
+    return ok(ADMIN_COPY.raffles.stage.announceWinner(maskedName(winner.fullName)), {
+      winner: {
+        drawId: winner.drawId,
+        maskedName: maskedName(winner.fullName),
+        fullName: winner.fullName,
+        drawIndex: winner.drawIndex,
+        poolSize: winner.poolSize,
+      },
+      raffleStatus: 'running',
+    });
+  });
+}
+
+export async function resolveDrawAction(
+  _previous: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  return guarded(async () => {
+    const id = text(formData, 'drawId');
+    if (!id) return failed('draw_not_found', adminErrorMessage({ code: 'draw_not_found' }));
+
+    const outcome = text(formData, 'outcome') === 'forfeited' ? 'forfeited' : 'confirmed';
+
+    const result = await resolveRaffleDraw(id, outcome);
+    if (!result.ok) return toState(result.error);
+
+    revalidatePath(ROUTES.adminRaffles);
+    return ok(outcome === 'confirmed' ? 'Resultado confirmado.' : 'Sorteando novamente.', {
+      raffleStatus: result.value.status,
+    });
   });
 }

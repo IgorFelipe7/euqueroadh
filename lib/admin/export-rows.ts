@@ -5,9 +5,17 @@
  * or a database — which matters because the two things that make this file safe (the formula guard
  * in `lib/domain/csv.ts` and the column set here) are both silent when they are wrong.
  *
- * Columns are DATABASE-SECURITY.md section 10.8 exactly: `Nome`, `Idade`, `Celular`, `Status`,
- * `Inscrita em`, `Posição na lista`. `id` is omitted — it means nothing outside the system, and
- * every field in the file is one more thing to lose.
+ * Columns are DATABASE-SECURITY.md section 10.8, plus the two that RAFFLE-AND-CERTIFICATE-SPEC.md
+ * section 4.6 adds: `Nome`, `Idade`, `Celular`, `Status`, `Inscrita em`, `Posição na lista`,
+ * `Presença`, `Certificado`. `id` is omitted — it means nothing outside the system, and every field
+ * in the file is one more thing to lose.
+ *
+ * **`Certificado` is a capability, and it raises this file's stakes.** Each URL grants access to one
+ * person's certificate, so a leaked spreadsheet is a leak of all of them. It is included anyway,
+ * for one reason: the alternative is copying eighty links by hand, and the same file already
+ * carries every participant's name, age and telephone number — strictly more sensitive than a
+ * document showing their name. The export is audited before a byte is streamed, and the interface
+ * says what the file contains.
  */
 
 import { EXPORT_STATUS_LABELS } from './copy';
@@ -22,6 +30,8 @@ export interface ExportableRegistration {
   readonly status: 'confirmed' | 'waitlisted' | 'cancelled';
   readonly createdAt: string;
   readonly waitlistPosition: number | null;
+  readonly attendedAt: string | null;
+  readonly certificateUrl: string;
 }
 
 export function buildExportCsv(rows: readonly ExportableRegistration[]): string {
@@ -36,6 +46,10 @@ export function buildExportCsv(rows: readonly ExportableRegistration[]): string 
       EXPORT_STATUS_LABELS[row.status],
       formatDateTime(new Date(row.createdAt)),
       row.waitlistPosition ?? '',
+      row.attendedAt ? formatDateTime(new Date(row.attendedAt)) : '',
+      // Only where it would actually work, so the file never hands an organizer a link that
+      // renders "não disponível" (section 4.2).
+      row.status === 'confirmed' && row.attendedAt ? row.certificateUrl : '',
     ]),
   );
 }

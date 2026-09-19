@@ -13,6 +13,8 @@ export const ROUTES = {
   adminHome: '/admin',
   adminRegistrations: '/admin/inscricoes',
   adminExport: '/admin/inscricoes/exportar',
+  adminAttendance: '/admin/presenca',
+  adminRaffles: '/admin/sorteio',
   adminSettings: '/admin/configuracoes',
   adminTeam: '/admin/equipe',
   adminAudit: '/admin/auditoria',
@@ -22,6 +24,30 @@ export const ROUTES = {
   authConfirm: '/auth/confirmar',
   signOut: '/auth/sair',
 } as const;
+
+/** The raffle stage, which is the only admin route rendered for an audience rather than a reader. */
+export function rafflePath(id: string): string {
+  return `${ROUTES.adminRaffles}/${id}`;
+}
+
+export function raffleStagePath(id: string): string {
+  return `${ROUTES.adminRaffles}/${id}/palco`;
+}
+
+/**
+ * A certificate's public URL.
+ *
+ * The token is a capability, so this is the one place it is turned into a link, and it is built
+ * from the canonical site URL rather than from a request header: the link is copied into WhatsApp
+ * and must work from a phone that never saw our host.
+ */
+export function certificatePath(token: string): string {
+  return `/certificado/${encodeURIComponent(token)}`;
+}
+
+export function certificateUrl(siteUrl: string, token: string): string {
+  return new URL(certificatePath(token), siteUrl).toString();
+}
 
 /** Where an interrupted sign-in lands when no valid destination survived validation. */
 export const DEFAULT_ADMIN_DESTINATION: string = ROUTES.adminHome;

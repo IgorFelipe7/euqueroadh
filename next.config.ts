@@ -46,6 +46,17 @@ const nextConfig: NextConfig = {
   // The compute region is NOT configured here — Vercel does not read one from this file. It lives
   // in vercel.json (ARCHITECTURE.md section 10.1).
   poweredByHeader: false,
+  /*
+   * The certificate images render type with `next/og`, which needs the font bytes at request time.
+   * A `readFile` from `process.cwd()` is invisible to the module tracer, so the two static Archivo
+   * faces would be absent from the deployed function and the certificate would silently fall back
+   * to a face with no weight range — the exact hierarchy the design depends on
+   * (RAFFLE-AND-CERTIFICATE-SPEC.md section 4.4). This is the documented way to say so.
+   */
+  outputFileTracingIncludes: {
+    '/certificado/[token]/imagem': ['./assets/fonts/**'],
+    '/certificado/[token]/story': ['./assets/fonts/**'],
+  },
   async headers() {
     return [
       {

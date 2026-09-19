@@ -103,4 +103,6 @@ export const EXPORT_COLUMNS = [
   'Status',
   'Inscrita em',
   'Posição na lista',
+  'Presença',
+  'Certificado',
 ] as const;

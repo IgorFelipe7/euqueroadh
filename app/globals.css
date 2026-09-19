@@ -1357,3 +1357,241 @@
     animation: none;
   }
 }
+
+/* ==================================================================================================
+ * The raffle stage — RAFFLE-AND-CERTIFICATE-SPEC.md section 3.7.
+ *
+ * The one admin surface rendered for an AUDIENCE rather than for a reader, so it wears the event's
+ * dark identity rather than the admin's light one. The exception is narrow and deliberate; nothing
+ * else in the admin darkens.
+ *
+ * Held to the public page's own rules: one subject with room around it, depth from one light
+ * source, rationed colour, and ornament that carries meaning. The reel's motion is the only thing
+ * here that did not already exist on the public page.
+ * ================================================================================================ */
+@layer components {
+  /*
+   * A fixed overlay rather than a route outside the protected layout: the authorization boundary
+   * stays exactly where it is, and the admin chrome is simply covered.
+   */
+  .u-stage {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    overflow: hidden;
+    background-color: var(--color-ink-900);
+    color: var(--color-text-primary);
+  }
+
+  /*
+   * One row of the reel, and therefore the unit the settle distance is measured in. Measured at
+   * runtime from the element rather than duplicated as a number in JavaScript, so this value can
+   * change here alone.
+   */
+  .u-reel-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: clamp(5rem, 13vh, 9.5rem);
+    font-size: clamp(2.25rem, 7.5vw, 5.5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  /*
+   * The viewport the strip moves behind. The mask is what makes the reel read as a physical object
+   * passing a window: names fade at both edges instead of being guillotined by a hard line.
+   */
+  .u-reel-window {
+    position: relative;
+    overflow: hidden;
+    height: clamp(5rem, 13vh, 9.5rem);
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgb(0 0 0 / 0.25) 12%,
+      rgb(0 0 0) 42%,
+      rgb(0 0 0) 58%,
+      rgb(0 0 0 / 0.25) 88%,
+      transparent 100%
+    );
+  }
+
+  .u-reel-strip {
+    will-change: transform;
+  }
+
+  /*
+   * The waiting spin, while the database decides. It loops by exactly one row, so the wrap is
+   * seamless and the strip never has to be rebuilt mid-motion.
+   *
+   * `translate3d` and nothing else: no `filter: blur()`, which is the one property that will drop
+   * frames on a mid-range laptop driving a projector. The speed blur is the ghost layer below.
+   */
+  .u-reel-spin {
+    animation: u-reel-spin 260ms linear infinite;
+  }
+
+  /*
+   * The ghost: the same strip, offset and faint, which reads as motion blur and costs one extra
+   * composited layer instead of a per-frame filter.
+   */
+  .u-reel-ghost {
+    position: absolute;
+    inset: 0;
+    opacity: 0.28;
+    translate: 0 -6px;
+    pointer-events: none;
+  }
+
+  /*
+   * The winner, at rest. Two-tone, the same relationship the hero uses between `educação` and
+   * `Financeira`: the given name in white, the abbreviated surname in the banner's light blue.
+   */
+  .u-stage-winner {
+    font-size: clamp(2.5rem, 9vw, 7rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+  }
+
+  /*
+   * The celebration, entire. 600 ms: the glow blooms once and falls back. No confetti, no burst,
+   * no sound — the page's one decorative element must carry meaning, and a confetti cannon carries
+   * none. The feeling is a precision instrument coming to rest.
+   */
+  .u-stage-bloom {
+    animation: u-stage-bloom 600ms var(--ease-settle) both;
+  }
+
+  /*
+   * The chrome layer. Controls fade out after three seconds of no input and return on pointer move
+   * or keyboard focus, so what the room sees is the composition and never a toolbar.
+   *
+   * `visibility` rides along with the opacity so a faded control is also removed from the tab order
+   * and from the accessibility tree — a button nobody can see must not be a button a screen reader
+   * announces as available.
+   */
+  .u-stage-chrome {
+    transition:
+      opacity 420ms var(--ease-settle),
+      visibility 0s linear 420ms;
+  }
+
+  .u-stage-chrome[data-visible='true'] {
+    opacity: 1;
+    visibility: visible;
+    transition:
+      opacity 180ms var(--ease-settle),
+      visibility 0s;
+  }
+
+  .u-stage-chrome[data-visible='false'] {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@keyframes u-reel-spin {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(0, calc(-1 * var(--reel-row, 6rem)), 0);
+  }
+}
+
+/*
+ * The bloom ends at FULL opacity, not at 0.8.
+ *
+ * It is `both`-filled, so its final frame is what the winner's name wears for as long as it is on
+ * screen — an end state below 1 leaves the one word the whole room is reading permanently dimmed,
+ * and drops it from the 19.52:1 that `text-primary` is specified at (VISUAL-DIRECTION.md § 3.2) to
+ * something no contrast table covers. The swell is in the scale; the opacity only fades it in.
+ */
+@keyframes u-stage-bloom {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/*
+ * Reduced motion: the result is identical, only the theatre is removed. The reel does not scroll —
+ * the stage cross-fades three labels and then the winner — and the bloom becomes an opacity change.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .u-reel-spin {
+    animation: none;
+  }
+
+  .u-reel-ghost {
+    display: none;
+  }
+
+  .u-stage-bloom {
+    animation: u-fade-in 200ms var(--ease-settle) both;
+  }
+}
+
+/* ==================================================================================================
+ * The certificate — RAFFLE-AND-CERTIFICATE-SPEC.md section 4.
+ * ================================================================================================ */
+@layer components {
+  /*
+   * The sheet's proportion on screen. Not enforced as an aspect-ratio box: a four-part Brazilian
+   * name must be allowed to wrap and push the sheet taller rather than be shrunk to fit a rectangle.
+   */
+  .u-certificate {
+    border: 1px solid var(--color-ink-600);
+  }
+}
+
+/*
+ * Printing, which is the vector-PDF path and the reason no PDF dependency exists.
+ *
+ * Three things have to be true for a browser's "Save as PDF" to produce the document rather than a
+ * screenshot of a web page: the navigation and the actions are gone, the dark field actually prints
+ * (browsers drop background colours unless asked), and the sheet is not split across two pages.
+ */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  .u-no-print,
+  .u-grain {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff;
+  }
+
+  /* `exact` is what keeps the navy field and the blue credits panel on the paper. */
+  .u-certificate {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    border: none;
+    /* A certificate split across two sheets is not a certificate. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* The glow is a radial gradient; at print resolution it bands rather than glows. */
+  .u-certificate .u-glow {
+    display: none;
+  }
+}

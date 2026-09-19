@@ -22,6 +22,7 @@ import {
   deleteRegistrationAction,
   editRegistrationAction,
   promoteOneAction,
+  setAttendanceAction,
 } from '../actions';
 
 export const metadata = { title: ADMIN_COPY.registrations.title };
@@ -197,13 +198,17 @@ export default async function RegistrationsPage({
               createdAt: row.createdAt,
               notes: row.notes,
               waitlistPosition: row.waitlistPosition,
+              attendedAt: row.attendedAt,
+              certificateUrl: row.certificateUrl,
             }))}
             headroom={headroomOf(event)}
+            certificatesEnabled={event.certificatesEnabled}
             actions={{
               edit: editRegistrationAction,
               cancel: cancelRegistrationAction,
               remove: deleteRegistrationAction,
               promote: promoteOneAction,
+              attendance: setAttendanceAction,
             }}
           />
 

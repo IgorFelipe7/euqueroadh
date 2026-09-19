@@ -14,6 +14,8 @@ import 'server-only';
 
 import { assertAdmin } from '@/lib/data/auth';
 import { createUserClient } from '@/lib/data/supabase/user';
+import { client as publicEnv } from '@/lib/env';
+import { certificateUrl } from '@/lib/routes';
 import {
   PAGE_SIZE,
   phonePrefix,
@@ -38,6 +40,17 @@ export interface AdminRegistration {
    * cancellations (invariant I4).
    */
   readonly waitlistPosition: number | null;
+  /** The check-in moment, or `null`. `attended_at` is assigned once and never rewritten. */
+  readonly attendedAt: string | null;
+  /**
+   * The person's certificate link, already built.
+   *
+   * The raw token is a capability and never leaves this module: the URL is assembled server-side so
+   * that no component is ever in a position to render, log or serialise the token on its own. The
+   * link is the same sensitivity class as the telephone number beside it, on a page that is already
+   * `no-store` and behind `requireAdmin()`.
+   */
+  readonly certificateUrl: string;
 }
 
 interface RegistrationRow {
@@ -51,11 +64,13 @@ interface RegistrationRow {
   status_changed_at: string;
   notes: string | null;
   waitlist_rank: number | null;
+  attended_at: string | null;
+  certificate_token: string;
 }
 
 const COLUMNS =
   'id, event_id, full_name, age, phone_e164, status, created_at, status_changed_at, notes, ' +
-  'waitlist_rank';
+  'waitlist_rank, attended_at, certificate_token';
 
 export interface RegistrationPage {
   readonly rows: readonly AdminRegistration[];
@@ -161,6 +176,8 @@ function toRegistration(
     statusChangedAt: row.status_changed_at,
     notes: row.notes,
     waitlistPosition: row.status === 'waitlisted' ? (positions.get(row.id) ?? null) : null,
+    attendedAt: row.attended_at,
+    certificateUrl: certificateUrl(publicEnv.NEXT_PUBLIC_SITE_URL, row.certificate_token),
   };
 }
 
@@ -256,6 +273,87 @@ export async function countByStatus(eventId: string): Promise<StatusCounts | nul
 
   const [all, confirmed, waitlisted, cancelled] = counts as number[];
   return { all, confirmed, waitlisted, cancelled };
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * Attendance (RAFFLE-AND-CERTIFICATE-SPEC.md section 1.3)
+ * ---------------------------------------------------------------------------------------------- */
+
+/** How many rows the door screen shows at once. A queue, not a report: enough to find one person. */
+export const DOOR_RESULT_LIMIT = 25;
+
+/**
+ * The door screen's search.
+ *
+ * **Confirmed rows only.** A waitlisted person at the door is a promotion, not a check-in, and the
+ * database refuses it — showing them here with a button that always fails would be a worse
+ * interface than not showing them. The screen says so in a line of copy instead.
+ *
+ * Ordered by name rather than by registration time: the organizer is looking for one person whose
+ * name they have just been told, and an alphabetical list is the one they can scan.
+ */
+export async function searchForDoor(
+  eventId: string,
+  term: string,
+): Promise<readonly AdminRegistration[]> {
+  await assertAdmin();
+
+  const supabase = await createUserClient();
+
+  let query = supabase
+    .from('registrations')
+    .select(COLUMNS)
+    .eq('event_id', eventId)
+    .eq('status', 'confirmed');
+
+  query = applySearch(query, term);
+
+  const { data, error } = await query
+    .order('search_name', { ascending: true })
+    .limit(DOOR_RESULT_LIMIT)
+    .returns<RegistrationRow[]>();
+
+  if (error) {
+    console.error(JSON.stringify({ event: 'admin.door_search_failed', code: error.code }));
+    return [];
+  }
+
+  return (data ?? []).map((row) => toRegistration(row, new Map()));
+}
+
+/** `present` over `confirmed` — the number in the door screen's header, and the raffle's pool size. */
+export async function countAttendance(
+  eventId: string,
+): Promise<{ present: number; confirmed: number } | null> {
+  await assertAdmin();
+
+  const supabase = await createUserClient();
+
+  const [confirmed, present] = await Promise.all([
+    supabase
+      .from('registrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId)
+      .eq('status', 'confirmed'),
+    supabase
+      .from('registrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('event_id', eventId)
+      .eq('status', 'confirmed')
+      .not('attended_at', 'is', null),
+  ]);
+
+  if (confirmed.error || present.error) {
+    console.error(
+      JSON.stringify({
+        event: 'admin.attendance_count_failed',
+        code: confirmed.error?.code ?? present.error?.code,
+      }),
+    );
+    return null;
+  }
+
+  return { present: present.count ?? 0, confirmed: confirmed.count ?? 0 };
 }
 
 /** The N most recent registrations, any status — the dashboard's confidence panel. */
