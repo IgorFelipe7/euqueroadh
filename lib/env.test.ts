@@ -114,3 +114,60 @@ describe('an incomplete environment', () => {
     );
   });
 });
+
+describe('the demonstration flag', () => {
+  it('is off by default, with no account attached', async () => {
+    stub();
+    const env = await loadEnv();
+
+    expect(env.demo).toEqual({ enabled: false, adminEmail: null });
+  });
+
+  it('treats an empty value as unset', async () => {
+    stub();
+    vi.stubEnv('DEMO_MODE', '');
+    vi.stubEnv('DEMO_ADMIN_EMAIL', '');
+    const env = await loadEnv();
+
+    expect(env.demo.enabled).toBe(false);
+  });
+
+  it('turns on with a reserved demo address', async () => {
+    stub();
+    vi.stubEnv('DEMO_MODE', 'true');
+    vi.stubEnv('DEMO_ADMIN_EMAIL', 'organizador@example.com');
+    const env = await loadEnv();
+
+    expect(env.demo).toEqual({ enabled: true, adminEmail: 'organizador@example.com' });
+  });
+
+  it('refuses to turn on without an account', async () => {
+    stub();
+    vi.stubEnv('DEMO_MODE', 'true');
+
+    await expect(loadEnv()).rejects.toThrow(/DEMO_ADMIN_EMAIL is required when DEMO_MODE=true/);
+  });
+
+  it('refuses any address that could belong to a real organizer', async () => {
+    stub();
+    vi.stubEnv('DEMO_MODE', 'true');
+    vi.stubEnv('DEMO_ADMIN_EMAIL', 'organizador@gmail.com');
+
+    await expect(loadEnv()).rejects.toThrow(/DEMO_ADMIN_EMAIL must be an @example.com address/);
+  });
+
+  it('refuses a misspelled flag rather than guessing', async () => {
+    stub();
+    vi.stubEnv('DEMO_MODE', 'yes');
+
+    await expect(loadEnv()).rejects.toThrow(/DEMO_MODE/);
+  });
+
+  it('ignores the address while the demo is off', async () => {
+    stub();
+    vi.stubEnv('DEMO_ADMIN_EMAIL', 'organizador@example.com');
+    const env = await loadEnv();
+
+    expect(env.demo).toEqual({ enabled: false, adminEmail: null });
+  });
+});

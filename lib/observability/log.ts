@@ -23,7 +23,8 @@ export type AuthEvent =
   | 'auth.otp_verified'
   | 'auth.link_verified'
   | 'auth.signed_out'
-  | 'auth.session_rejected';
+  | 'auth.session_rejected'
+  | 'auth.demo_signed_in';
 
 /**
  * Why the event ended the way it did. These are *operational* categories, and several of them
@@ -41,6 +42,7 @@ export type AuthOutcome =
   | 'anonymous'
   | 'lookup_failed'
   | 'provider_unavailable'
+  | 'demo_disabled'
   | 'ok';
 
 export interface AuthLogFields {

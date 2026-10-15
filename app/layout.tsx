@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Archivo } from 'next/font/google';
 
-import { client as publicEnv } from '@/lib/env';
+import { DemoBanner } from '@/components/demo/demo-banner';
+import { demo, client as publicEnv } from '@/lib/env';
 
 import './globals.css';
 
@@ -29,6 +30,8 @@ export const metadata: Metadata = {
   description:
     'Palestra gratuita de educação financeira para jovens, em Hortolândia/SP. ' +
     '19 de setembro de 2026, das 19h às 21h, no Espaço Cezanne Eventos. Coffee break incluso.',
+  // The demonstration copies the real event page; it must never compete with it in search.
+  ...(demo.enabled ? { robots: { index: false, follow: false } } : {}),
 };
 
 export const viewport: Viewport = {
@@ -48,7 +51,10 @@ export default function RootLayout({
         pages themselves (`components/site/grain.tsx`) rather than here, so the light admin subtree
         never inherits a texture designed for a navy field.
       */}
-      <body>{children}</body>
+      <body>
+        {demo.enabled ? <DemoBanner /> : null}
+        {children}
+      </body>
     </html>
   );
 }

@@ -7,10 +7,14 @@
  */
 import type { MetadataRoute } from 'next';
 
-import { client as publicEnv } from '@/lib/env';
+import { demo, client as publicEnv } from '@/lib/env';
 
 export default function robots(): MetadataRoute.Robots {
   const origin = publicEnv.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+
+  // The demonstration deployment is a copy of the real page with fictitious data: nothing in it is
+  // meant to be found by search (docs/DEMO.md).
+  if (demo.enabled) return { rules: { userAgent: '*', disallow: '/' } };
 
   return {
     /*

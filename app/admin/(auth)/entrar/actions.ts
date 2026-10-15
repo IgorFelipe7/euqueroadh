@@ -33,7 +33,8 @@ import {
   type SignInState,
 } from '@/lib/auth/sign-in';
 import { requestAdminOtp, verifyAdminOtp } from '@/lib/data/auth';
-import { safeAdminPath } from '@/lib/routes';
+import { signInAsDemoAdmin } from '@/lib/data/demo';
+import { ROUTES, safeAdminPath, signInPathFor } from '@/lib/routes';
 
 type Intent = 'request' | 'resend' | 'verify' | 'restart';
 
@@ -123,4 +124,15 @@ async function verifyStep(previous: SignInState, formData: FormData): Promise<Si
   // The session cookies are written by now. Where this lands is decided by `requireAdmin()` on the
   // next request: the protected layout sends a non-administrator to /admin/sem-acesso.
   redirect(safeAdminPath(stringOf(formData, 'next')));
+}
+
+/**
+ * The demonstration's one-click sign-in (docs/DEMO.md). Inert unless `DEMO_MODE=true`:
+ * `signInAsDemoAdmin()` refuses before contacting anything, and this lands back on the sign-in page.
+ */
+export async function demoSignInAction(): Promise<void> {
+  const result = await signInAsDemoAdmin();
+
+  if (result.outcome === 'signed_in') redirect(ROUTES.adminHome);
+  redirect(signInPathFor(null, 'demo-indisponivel'));
 }

@@ -164,7 +164,7 @@ export function safeAdminPath(candidate: string | null | undefined): string {
  * Why the visitor is looking at the sign-in page. Rendered as copy (ADMIN-SPEC.md section 2), so the
  * set is closed — an unrecognised value shows no message rather than echoing a query parameter.
  */
-export const SIGN_IN_REASONS = ['sessao-expirada', 'link-invalido'] as const;
+export const SIGN_IN_REASONS = ['sessao-expirada', 'link-invalido', 'demo-indisponivel'] as const;
 export type SignInReason = (typeof SIGN_IN_REASONS)[number];
 
 /** Builds the sign-in URL that remembers where the visitor was going. */

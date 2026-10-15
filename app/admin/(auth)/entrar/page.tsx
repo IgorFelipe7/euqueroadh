@@ -3,8 +3,11 @@ import { redirect } from 'next/navigation';
 
 import { SIGN_IN_COPY } from '@/lib/auth/sign-in';
 import { getAdminSessionState } from '@/lib/data/auth';
+import { DEMO_COPY } from '@/lib/demo-copy';
+import { demo } from '@/lib/env';
 import { ROUTES, safeAdminPath, signInReason } from '@/lib/routes';
 
+import { demoSignInAction } from './actions';
 import { SignInForm } from './sign-in-form';
 
 export const metadata: Metadata = {
@@ -35,6 +38,26 @@ export default async function SignInPage({
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-[26rem] flex-col justify-center px-5 py-16">
+      {demo.enabled ? (
+        <section
+          aria-labelledby="demo-heading"
+          className="mb-10 flex flex-col gap-3 rounded-lg border border-border-strong p-5"
+        >
+          <h2 id="demo-heading" className="text-h3">
+            {DEMO_COPY.signIn.heading}
+          </h2>
+          <p className="text-body">{DEMO_COPY.signIn.body}</p>
+          <form action={demoSignInAction}>
+            <button
+              type="submit"
+              className="min-h-12 w-full rounded-md bg-blue-600 px-5 text-label text-white"
+            >
+              {DEMO_COPY.signIn.button}
+            </button>
+          </form>
+        </section>
+      ) : null}
+
       <SignInForm next={next} notice={reason ? SIGN_IN_COPY.reasons[reason] : null} />
     </main>
   );

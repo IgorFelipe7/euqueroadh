@@ -91,6 +91,7 @@ describe('signInReason', () => {
   it('accepts only the documented reasons', () => {
     expect(signInReason('sessao-expirada')).toBe('sessao-expirada');
     expect(signInReason('link-invalido')).toBe('link-invalido');
+    expect(signInReason('demo-indisponivel')).toBe('demo-indisponivel');
     expect(signInReason(['sessao-expirada'])).toBe('sessao-expirada');
   });
 

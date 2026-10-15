@@ -16,6 +16,8 @@
  */
 import { z } from 'zod';
 
+import { DEMO_COPY } from '@/lib/demo-copy';
+
 /** `[auth.email] otp_length`. Drives the code field's `maxlength` and the copy. */
 export const OTP_LENGTH = 6;
 
@@ -110,6 +112,7 @@ export const SIGN_IN_COPY = {
   reasons: {
     'sessao-expirada': 'Sua sessão expirou. Entre novamente.',
     'link-invalido': 'O link expirou ou já foi usado. Peça um novo código.',
+    'demo-indisponivel': DEMO_COPY.unavailable,
   },
   noAccess: {
     heading: 'Sua conta não tem acesso a esta área',

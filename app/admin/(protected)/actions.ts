@@ -48,9 +48,11 @@ import {
 } from '@/lib/data/admin/mutations';
 import { inviteAdmin, removeAdmin, setAdminActive } from '@/lib/data/admin/team';
 import { assertAdmin } from '@/lib/data/auth';
+import { DEMO_COPY } from '@/lib/demo-copy';
 import { UnauthorizedError } from '@/lib/data/errors';
 import { maskedName } from '@/lib/domain/display-name';
 import { adminAgeSchema, fieldErrors, inviteInputSchema, nameSchema } from '@/lib/domain/schemas';
+import { demo } from '@/lib/env';
 import { ROUTES } from '@/lib/routes';
 
 /* ------------------------------------------------------------------------------------------------
@@ -107,6 +109,15 @@ async function guarded(run: () => Promise<AdminActionState>): Promise<AdminActio
     }
     throw error;
   }
+}
+
+/**
+ * The demonstration deployment (docs/DEMO.md) is shared by every visitor, so the actions that
+ * would send e-mail to a typed address, lock the next visitor out, or empty the data for everyone
+ * are refused there. Checked after `assertAdmin()`, inside `guarded()`, like any other rule.
+ */
+function refusedInDemo(): AdminActionState | null {
+  return demo.enabled ? failed('unavailable', DEMO_COPY.blocked) : null;
 }
 
 /**
@@ -344,6 +355,9 @@ export async function purgeRegistrationsAction(
   formData: FormData,
 ): Promise<AdminActionState> {
   return guarded(async () => {
+    const refused = refusedInDemo();
+    if (refused) return refused;
+
     const event = await getAdminEvent();
     if (!event) return failed('event_not_found', adminErrorMessage({ code: 'event_not_found' }));
 
@@ -381,6 +395,9 @@ export async function inviteAdminAction(
   formData: FormData,
 ): Promise<AdminActionState> {
   return guarded(async () => {
+    const refused = refusedInDemo();
+    if (refused) return refused;
+
     const parsed = inviteInputSchema.safeParse({ email: text(formData, 'email') });
 
     if (!parsed.success) {
@@ -413,6 +430,9 @@ export async function setAdminActiveAction(
   formData: FormData,
 ): Promise<AdminActionState> {
   return guarded(async () => {
+    const refused = refusedInDemo();
+    if (refused) return refused;
+
     const userId = text(formData, 'userId');
     if (!userId) return failed('admin_not_found', adminErrorMessage({ code: 'admin_not_found' }));
 
@@ -431,6 +451,9 @@ export async function removeAdminAction(
   formData: FormData,
 ): Promise<AdminActionState> {
   return guarded(async () => {
+    const refused = refusedInDemo();
+    if (refused) return refused;
+
     const userId = text(formData, 'userId');
     if (!userId) return failed('admin_not_found', adminErrorMessage({ code: 'admin_not_found' }));
 

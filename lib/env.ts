@@ -80,3 +80,49 @@ export const server: ServerEnv = parse(serverSchema, 'server', {
   SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
   TURNSTILE_SECRET_KEY: process.env.TURNSTILE_SECRET_KEY,
 });
+
+/*
+ * The public demonstration deployment (docs/DEMO.md). Off unless `DEMO_MODE=true`.
+ *
+ * The demo signs visitors in as one fixed organizer account, so that address is pinned to the
+ * RFC 2606 reserved domain `example.com`. No misconfiguration — not even `DEMO_MODE=true` pasted
+ * into the production project by mistake — can hand a visitor the session of a real organizer:
+ * a reserved address cannot belong to one.
+ */
+const blankAsMissing = (value: unknown) => (value === '' ? undefined : value);
+
+const demoSchema = z
+  .object({
+    DEMO_MODE: z.preprocess(
+      blankAsMissing,
+      z.enum(['true', 'false'], { message: 'must be `true` or `false`' }).optional(),
+    ),
+    DEMO_ADMIN_EMAIL: z.preprocess(
+      blankAsMissing,
+      z
+        .string()
+        .regex(/^[a-z0-9._%+-]+@example\.com$/i, { message: 'must be an @example.com address' })
+        .optional(),
+    ),
+  })
+  .refine((value) => value.DEMO_MODE !== 'true' || value.DEMO_ADMIN_EMAIL !== undefined, {
+    message: 'is required when DEMO_MODE=true',
+    path: ['DEMO_ADMIN_EMAIL'],
+  });
+
+export interface DemoEnv {
+  /** `true` only on the demonstration deployment. */
+  readonly enabled: boolean;
+  /** The demo organizer's reserved address; `null` whenever the demo is off. */
+  readonly adminEmail: string | null;
+}
+
+const demoValues = parse(demoSchema, 'demo', {
+  DEMO_MODE: process.env.DEMO_MODE,
+  DEMO_ADMIN_EMAIL: process.env.DEMO_ADMIN_EMAIL,
+});
+
+export const demo: DemoEnv = {
+  enabled: demoValues.DEMO_MODE === 'true',
+  adminEmail: demoValues.DEMO_MODE === 'true' ? (demoValues.DEMO_ADMIN_EMAIL ?? null) : null,
+};
