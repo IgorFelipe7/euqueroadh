@@ -8,6 +8,16 @@ arrivals wall, a raffle and a public certificate portal.
 **Live:** [euqueroadh.com](https://euqueroadh.com) · **In production:** 138 registrations and
 70 on-site check-ins at the September 2026 event.
 
+**Try it, admin area included:** [euqueroadh-demo.vercel.app](https://euqueroadh-demo.vercel.app),
+a copy running the same code on fictitious data that resets every day. See [Live demo](#live-demo).
+
+<p align="center">
+  <a href="https://euqueroadh-demo.vercel.app">
+    <img src="docs/screenshots/cover.jpg" width="100%"
+         alt="Landing page, admin dashboard, registrations, check-in, raffle stage and certificate">
+  </a>
+</p>
+
 ---
 
 ## Highlights
@@ -28,6 +38,38 @@ arrivals wall, a raffle and a public certificate portal.
 - **Accessible and fast.** Semantic HTML, visible focus, correct mobile keyboards, reduced-motion
   support and automated axe-core WCAG checks in the end-to-end suite. Animation uses
   compositor-friendly CSS only.
+
+## Live demo
+
+A separate deployment with its own database, holding 138 fictitious people (names are random
+combinations, every phone number is in the `(19) 90000-xxxx` range). It is rebuilt every day at
+03:00 (São Paulo), so feel free to change anything.
+
+| Try | Where |
+| --- | --- |
+| The public page and the registration flow | [euqueroadh-demo.vercel.app](https://euqueroadh-demo.vercel.app) |
+| The organizer area, no e-mail needed | [/admin](https://euqueroadh-demo.vercel.app/admin) → **Entrar na demonstração** |
+| The certificate portal | [/certificado](https://euqueroadh-demo.vercel.app/certificado) with `(19) 90000-0001` and `Davi` |
+
+Things worth clicking in the admin area: promote someone from the waitlist, open the self check-in
+and scan the QR with a phone, run **Sorteio 2** on the stage (space draws, Enter confirms) and
+export the CSV. Inviting or removing organizers and the end-of-event purge are disabled in the demo.
+How the demo is isolated from production is documented in [docs/DEMO.md](docs/DEMO.md).
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/landing.jpg" alt="Public landing page"><br><sub>Landing page: capacity is full, so the call to action becomes the waitlist</sub></td>
+    <td width="50%"><img src="docs/screenshots/dashboard.jpg" alt="Admin dashboard"><br><sub>Dashboard: capacity, waitlist and the latest registrations</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/registrations.jpg" alt="Registrations list"><br><sub>Registrations: search, status filters, waitlist rank and audited CSV export</sub></td>
+    <td><img src="docs/screenshots/check-in.jpg" alt="Check-in screen"><br><sub>Event day: time-limited QR self check-in and the door list for exceptions</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/raffle-stage.jpg" alt="Raffle stage"><br><sub>Raffle stage for the projector, drawing only from people who are present</sub></td>
+    <td><img src="docs/screenshots/certificate.jpg" alt="Certificate"><br><sub>Certificate portal: identified by phone and first name, never by a lookup list</sub></td>
+  </tr>
+</table>
 
 ## Features
 
@@ -174,6 +216,7 @@ docs/                 product, architecture, security and design specifications
 | [ADMIN-SPEC](./docs/ADMIN-SPEC.md) | Admin area behaviour |
 | [VISUAL-DIRECTION](./docs/VISUAL-DIRECTION.md) | Design system, typography, motion and accessibility |
 | [DECISIONS](./docs/DECISIONS.md) | Decision log with rationale |
+| [DEMO](./docs/DEMO.md) | The public demonstration deployment and how it stays isolated from production |
 
 ---
 
